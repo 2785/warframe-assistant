@@ -21,7 +21,9 @@ THE SOFTWARE.
 */
 package main
 
-import "github.com/2785/warframe-assistant/cmd"
+import (
+	"github.com/2785/warframe-assistant/cmd"
+)
 
 func main() {
 	cmd.Execute()

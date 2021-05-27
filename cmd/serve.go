@@ -23,35 +23,51 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/2785/warframe-assistant/internal/http"
+	"github.com/fvbock/endless"
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 )
 
-// wfmPriceCheckCmd represents the wfmPriceCheck command
-var wfmPriceCheckCmd = &cobra.Command{
-	Use:   "wfmPriceCheck",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+// serveCmd represents the serve command
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "TBD",
+	Long:  `TBD`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		logger, err := zap.NewProduction(zap.Fields(zap.String("app", "warframe-assistant")))
+		if err != nil {
+			return err
+		}
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("wfmPriceCheck called")
+		server, err := http.MakeServer(logger)
+		if err != nil {
+			return err
+		}
+
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
+
+		_ = endless.ListenAndServe(fmt.Sprintf("localhost:%s", port), server)
+
+		return nil
 	},
 }
 
 func init() {
-	testCmd.AddCommand(wfmPriceCheckCmd)
+	rootCmd.AddCommand(serveCmd)
 
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
-	// wfmPriceCheckCmd.PersistentFlags().String("foo", "", "A help for foo")
+	// serveCmd.PersistentFlags().String("foo", "", "A help for foo")
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
-	// wfmPriceCheckCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// serveCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
