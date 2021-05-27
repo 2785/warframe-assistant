@@ -25,9 +25,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/2785/warframe-assistant/internal/discord"
 	"github.com/2785/warframe-assistant/internal/scores"
+	"github.com/2785/warframe-assistant/internal/stringcache"
 	"github.com/bwmarrin/discordgo"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"
@@ -50,7 +52,7 @@ var serveBotCmd = &cobra.Command{
 			return err
 		}
 
-		logger, err := zap.NewProduction(zap.Fields(zap.String("pl", "warframe-assistant"), zap.String("co", "serveBot")))
+		logger, err := zap.NewDevelopment(zap.Fields(zap.String("pl", "warframe-assistant"), zap.String("co", "serveBot")))
 		if err != nil {
 			return err
 		}
@@ -60,18 +62,19 @@ var serveBotCmd = &cobra.Command{
 			Table:  "devtest",
 			Logger: logger,
 		}
-
-		messageCreateHandler := &discord.MessageCreateHandler{
-			Cache:             nil,
-			Logger:            logger,
-			Prefix:            "?!",
-			EventScoreService: pgService,
+		memCache := stringcache.NewMemory(5*time.Minute, 10*time.Minute)
+		discordEventHandler := &discord.EventHandler{
+			RoleIDForVerification: "847537490033770497",
+			Cache:                 memCache,
+			Logger:                logger,
+			Prefix:                "?!",
+			EventScoreService:     pgService,
 		}
 
-		dg.Identify.Intents = discordgo.IntentsGuildMessages
+		dg.Identify.Intents = discordgo.IntentsGuildMessages + discordgo.IntentsGuildMessageReactions
 
-		dg.AddHandler(messageCreateHandler.Handle)
-
+		dg.AddHandler(discordEventHandler.HandleMessageCreate)
+		dg.AddHandler(discordEventHandler.HandleMessageReactionAdd)
 		err = dg.Open()
 		if err != nil {
 			return err

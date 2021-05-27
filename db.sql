@@ -21,3 +21,9 @@ INSERT INTO devtest (
 ) VALUES (
     'test', 'test', 2, 'some-uri'
 );
+
+INSERT INTO devtest (
+    userID, ign, score, proof
+) VALUES (
+    'user2#2222', 'user2', 3, 'https://cdn.discordapp.com/attachments/301032274860965890/847478722826207242/unknown.png'
+);
