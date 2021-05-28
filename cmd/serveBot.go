@@ -27,9 +27,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/2785/warframe-assistant/internal/cache"
 	"github.com/2785/warframe-assistant/internal/discord"
+	"github.com/2785/warframe-assistant/internal/meta"
 	"github.com/2785/warframe-assistant/internal/scores"
-	"github.com/2785/warframe-assistant/internal/stringcache"
 	"github.com/bwmarrin/discordgo"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"
@@ -62,16 +63,22 @@ var serveBotCmd = &cobra.Command{
 			Table:  "devtest",
 			Logger: logger,
 		}
-		memCache := stringcache.NewMemory(5*time.Minute, 10*time.Minute)
+
+		memCache := cache.NewMemory(5*time.Minute, 10*time.Minute)
+
+		metadataService := meta.NewWithCache(&meta.PostgresService{DB: db, Table: "role_lookup", Logger: logger.With(zap.String("co", "metadata-service-pg"))}, cache.Named("meta", memCache), logger.With(zap.String("co", "metadata-service-cache")))
+
 		discordEventHandler := &discord.EventHandler{
-			RoleIDForVerification: "847537490033770497",
-			Cache:                 memCache,
-			Logger:                logger,
-			Prefix:                "?!",
-			EventScoreService:     pgService,
+			Cache:             cache.Named("dialog", memCache),
+			Logger:            logger,
+			Prefix:            "?!",
+			EventScoreService: pgService,
+			MetadataService:   metadataService,
 		}
 
-		dg.Identify.Intents = discordgo.IntentsGuildMessages + discordgo.IntentsGuildMessageReactions
+		dg.Identify.Intents =
+			discordgo.IntentsGuildMessages +
+				discordgo.IntentsGuildMessageReactions
 
 		dg.AddHandler(discordEventHandler.HandleMessageCreate)
 		dg.AddHandler(discordEventHandler.HandleMessageReactionAdd)

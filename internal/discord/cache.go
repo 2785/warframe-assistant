@@ -4,12 +4,26 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/2785/warframe-assistant/internal/cache"
 	"github.com/bwmarrin/discordgo"
 )
 
-type Cache interface {
-	Set(key string, val string) error
-	Get(key string) (string, bool)
+type dialogInfo struct {
+	T                  dialogType
+	GID, MID, CID, SID string
+}
+
+func setDialogCache(c cache.Cache, key string, info *dialogInfo) error {
+	return c.Set(key, info)
+}
+
+func getDialogCache(c cache.Cache, key string) (*dialogInfo, bool) {
+	val, ok := c.Get(key)
+	if !ok {
+		return nil, false
+	}
+	info, ok := val.(*dialogInfo)
+	return info, ok
 }
 
 func referenceToID(r *discordgo.MessageReference) string {
