@@ -66,7 +66,16 @@ var serveBotCmd = &cobra.Command{
 
 		memCache := cache.NewMemory(5*time.Minute, 10*time.Minute)
 
-		metadataService := meta.NewWithCache(&meta.PostgresService{DB: db, Table: "role_lookup", Logger: logger.With(zap.String("co", "metadata-service-pg"))}, cache.Named("meta", memCache), logger.With(zap.String("co", "metadata-service-cache")))
+		metadataService := meta.NewWithCache(
+			&meta.PostgresService{
+				DB:                 db,
+				ActionRoleTable:    "role_lookup",
+				IGNTable:           "users",
+				EventsTable:        "events",
+				ParticipationTable: "participation",
+				Logger:             logger.With(zap.String("co", "metadata-service-pg"))},
+			cache.Named("meta", memCache),
+			logger.With(zap.String("co", "metadata-service-cache")))
 
 		discordEventHandler := &discord.EventHandler{
 			Cache:             cache.Named("dialog", memCache),
@@ -78,11 +87,19 @@ var serveBotCmd = &cobra.Command{
 
 		dg.Identify.Intents =
 			discordgo.IntentsGuildMessages +
-				discordgo.IntentsGuildMessageReactions
+				discordgo.IntentsGuildMessageReactions +
+				discordgo.IntentsGuildIntegrations
 
 		dg.AddHandler(discordEventHandler.HandleMessageCreate)
 		dg.AddHandler(discordEventHandler.HandleMessageReactionAdd)
+		dg.AddHandler(discordEventHandler.HandleInteractionsCreate)
 		err = dg.Open()
+		if err != nil {
+			return err
+		}
+
+		err = discordEventHandler.RegisterInteractionCreateHandlers(dg)
+
 		if err != nil {
 			return err
 		}

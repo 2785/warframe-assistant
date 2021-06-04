@@ -9,11 +9,13 @@ import (
 )
 
 type EventHandler struct {
-	Cache             cache.Cache
-	Logger            *zap.Logger
-	Prefix            string
-	EventScoreService scores.ScoresService
-	MetadataService   meta.Service
+	Cache                     cache.Cache
+	Logger                    *zap.Logger
+	Prefix                    string
+	EventScoreService         scores.ScoresService
+	MetadataService           meta.Service
+	InteractionCreateHandlers map[string]func(s *discordgo.Session, i *discordgo.InteractionCreate)
+	Commands                  []*discordgo.ApplicationCommand
 }
 
 type dialogType string
@@ -21,7 +23,10 @@ type dialogType string
 const (
 	verificationDialog dialogType = dialogType("verification")
 	submissionDialog   dialogType = dialogType("submission")
+	manageEventDialog  dialogType = dialogType("manage-event")
 )
+
+const internalError string = " Please try again later or contact bot maintainer for help!"
 
 func (h *EventHandler) sendReplyWithLogging(s *discordgo.Session, gid, cid, mid, msg string) {
 	_, err := s.ChannelMessageSendReply(cid, msg, &discordgo.MessageReference{MessageID: mid, ChannelID: cid, GuildID: gid})

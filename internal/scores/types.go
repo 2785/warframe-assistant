@@ -28,6 +28,21 @@ type SummaryRecord struct {
 	Sum    int    `db:"sum"`
 }
 
+type ScoreSummary struct {
+	UID        string `db:"user_id"`
+	IGN        string `db:"ign"`
+	TotalScore int    `db:"score"`
+}
+
+type ScoreSubmission struct {
+	ID       string `db:"id"`
+	UID      string `db:"user_id"`
+	EID      string `db:"event_id"`
+	Proof    string `db:"proof"`
+	Verified bool   `db:"verified"`
+	Score    int    `db:"score"`
+}
+
 var _ error = &ErrNoRecord{}
 
 type ErrNoRecord struct{}

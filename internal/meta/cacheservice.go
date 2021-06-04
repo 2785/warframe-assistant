@@ -8,13 +8,14 @@ type Cache interface {
 }
 
 type CacheService struct {
-	s Service
 	c Cache
 	l *zap.Logger
+
+	Service
 }
 
 func NewWithCache(s Service, c Cache, l *zap.Logger) *CacheService {
-	return &CacheService{s, c, l}
+	return &CacheService{c, l, s}
 }
 
 func (s *CacheService) GetRoleRequirementForGuild(action string, gid string) (string, error) {
@@ -25,7 +26,7 @@ func (s *CacheService) GetRoleRequirementForGuild(action string, gid string) (st
 		}
 	}
 
-	role_id, err := s.s.GetRoleRequirementForGuild(action, gid)
+	role_id, err := s.Service.GetRoleRequirementForGuild(action, gid)
 	if err != nil {
 		return "", err
 	}
