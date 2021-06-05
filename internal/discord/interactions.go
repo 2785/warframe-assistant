@@ -66,138 +66,143 @@ func (h *EventHandler) RegisterInteractionCreateHandlers(s *discordgo.Session) e
 		// 	},
 		// },
 		{
-			Name:        "events",
-			Description: "Event information and management",
-			Options: []*discordgo.ApplicationCommandOption{
-				{
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Name:        "list",
-					Description: "List events in this guild",
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Type:        discordgo.ApplicationCommandOptionBoolean,
-							Name:        "print-all",
-							Description: "If all events should be printed",
-						},
-					},
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Name:        "create",
-					Description: "Create a new event",
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Type:        discordgo.ApplicationCommandOptionString,
-							Name:        "name",
-							Description: "Name of the new event",
-							Required:    true,
-						},
-						{
-							Type:        discordgo.ApplicationCommandOptionString,
-							Name:        "type",
-							Description: "Type of the new event, for now supports `scoreboard-campaign` and `tournament`",
-							Required:    true,
-						},
-						{
-							Type:        discordgo.ApplicationCommandOptionString,
-							Name:        "end-date",
-							Description: "End date of the event, in the format of `Jan 2, 2006 at 3:04pm (MST)`",
-							Required:    true,
-						},
-						{
-							Type:        discordgo.ApplicationCommandOptionString,
-							Name:        "start-date",
-							Description: "Start date of the event, in the format of `Jan 2, 2006 at 3:04pm (MST)`",
-						},
-						{
-							Type:        discordgo.ApplicationCommandOptionBoolean,
-							Name:        "active",
-							Description: "If the event is created as an active event, defaults to yes",
-						},
-					},
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Name:        "join",
-					Description: "Join the active event if ID unspecified, else join the specified event",
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Type:        discordgo.ApplicationCommandOptionString,
-							Name:        "event-id",
-							Description: "The UUID of the event (this flow will be updated later)",
-						},
-					},
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Name:        "bail",
-					Description: "Quit the active event if ID unspecified, else quit the specified event",
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Type:        discordgo.ApplicationCommandOptionString,
-							Name:        "event-id",
-							Description: "The UUID of the event (this flow will be updated later)",
-						},
-					},
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Name:        "activate",
-					Description: "Activate a specified event by ID",
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Type:        discordgo.ApplicationCommandOptionString,
-							Name:        "event-id",
-							Description: "The UUID of the event",
-							Required:    true,
-						},
-					},
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Name:        "deactivate",
-					Description: "Deactivate a specified event by ID",
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Type:        discordgo.ApplicationCommandOptionString,
-							Name:        "event-id",
-							Description: "The UUID of the event",
-							Required:    true,
-						},
-					},
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Name:        "list-participant",
-					Description: "List participants of an event",
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Type:        discordgo.ApplicationCommandOptionString,
-							Name:        "event-id",
-							Description: "The UUID of the event",
-						},
-					},
-				},
-				{
-					Type:        discordgo.ApplicationCommandOptionSubCommand,
-					Name:        "progress",
-					Description: "Print the progress of current events",
-					Options: []*discordgo.ApplicationCommandOption{
-						{
-							Type:        discordgo.ApplicationCommandOptionString,
-							Name:        "event-id",
-							Description: "The UUID of the event, prints all if omitted",
-						},
-					},
-				},
-			},
+			Name:        "help",
+			Description: "Display information regarding what the bot does / how to use the bot",
 		},
+		// {
+		// 	Name:        "events",
+		// 	Description: "Event information and management",
+		// 	Options: []*discordgo.ApplicationCommandOption{
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionSubCommand,
+		// 			Name:        "list",
+		// 			Description: "List events in this guild",
+		// 			Options: []*discordgo.ApplicationCommandOption{
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionBoolean,
+		// 					Name:        "print-all",
+		// 					Description: "If all events should be printed",
+		// 				},
+		// 			},
+		// 		},
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionSubCommand,
+		// 			Name:        "create",
+		// 			Description: "Create a new event",
+		// 			Options: []*discordgo.ApplicationCommandOption{
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionString,
+		// 					Name:        "name",
+		// 					Description: "Name of the new event",
+		// 					Required:    true,
+		// 				},
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionString,
+		// 					Name:        "type",
+		// 					Description: "Type of the new event, for now supports `scoreboard-campaign` and `tournament`",
+		// 					Required:    true,
+		// 				},
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionString,
+		// 					Name:        "end-date",
+		// 					Description: "End date of the event, in the format of `Jan 2, 2006 at 3:04pm (MST)`",
+		// 					Required:    true,
+		// 				},
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionString,
+		// 					Name:        "start-date",
+		// 					Description: "Start date of the event, in the format of `Jan 2, 2006 at 3:04pm (MST)`",
+		// 				},
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionBoolean,
+		// 					Name:        "active",
+		// 					Description: "If the event is created as an active event, defaults to yes",
+		// 				},
+		// 			},
+		// 		},
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionSubCommand,
+		// 			Name:        "join",
+		// 			Description: "Join the active event if ID unspecified, else join the specified event",
+		// 			Options: []*discordgo.ApplicationCommandOption{
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionString,
+		// 					Name:        "event-id",
+		// 					Description: "The UUID of the event (this flow will be updated later)",
+		// 				},
+		// 			},
+		// 		},
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionSubCommand,
+		// 			Name:        "bail",
+		// 			Description: "Quit the active event if ID unspecified, else quit the specified event",
+		// 			Options: []*discordgo.ApplicationCommandOption{
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionString,
+		// 					Name:        "event-id",
+		// 					Description: "The UUID of the event (this flow will be updated later)",
+		// 				},
+		// 			},
+		// 		},
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionSubCommand,
+		// 			Name:        "activate",
+		// 			Description: "Activate a specified event by ID",
+		// 			Options: []*discordgo.ApplicationCommandOption{
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionString,
+		// 					Name:        "event-id",
+		// 					Description: "The UUID of the event",
+		// 					Required:    true,
+		// 				},
+		// 			},
+		// 		},
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionSubCommand,
+		// 			Name:        "deactivate",
+		// 			Description: "Deactivate a specified event by ID",
+		// 			Options: []*discordgo.ApplicationCommandOption{
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionString,
+		// 					Name:        "event-id",
+		// 					Description: "The UUID of the event",
+		// 					Required:    true,
+		// 				},
+		// 			},
+		// 		},
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionSubCommand,
+		// 			Name:        "list-participant",
+		// 			Description: "List participants of an event",
+		// 			Options: []*discordgo.ApplicationCommandOption{
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionString,
+		// 					Name:        "event-id",
+		// 					Description: "The UUID of the event",
+		// 				},
+		// 			},
+		// 		},
+		// 		{
+		// 			Type:        discordgo.ApplicationCommandOptionSubCommand,
+		// 			Name:        "progress",
+		// 			Description: "Print the progress of current events",
+		// 			Options: []*discordgo.ApplicationCommandOption{
+		// 				{
+		// 					Type:        discordgo.ApplicationCommandOptionString,
+		// 					Name:        "event-id",
+		// 					Description: "The UUID of the event, prints all if omitted",
+		// 				},
+		// 			},
+		// 		},
+		// 	},
+		// },
 	}
 
 	handlers := map[string]func(*discordgo.Session, *discordgo.InteractionCreate){
 		"test":   h.handleTest,
 		"ign":    h.handleIGN,
 		"events": h.handleEvents,
+		"help":   h.handleHelp,
 	}
 
 	h.Commands = commands
@@ -686,6 +691,54 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 	default:
 		h.interactionRespondWithErrorLogging(s, i.Interaction, "unknown subcommand")
+	}
+}
+
+func (h *EventHandler) handleHelp(s *discordgo.Session, i *discordgo.InteractionCreate) {
+	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionApplicationCommandResponseData{
+			Embeds: []*discordgo.MessageEmbed{
+				{
+					Title: "Warframe Assistant User Manual",
+					Fields: []*discordgo.MessageEmbedField{
+						{
+							Name:  "General Information",
+							Value: "The bot is developed to assist in running warframe clan events and related utilities in discord, the bot is under _active-ish_ development and attempts will be made to make this guide up to date",
+						},
+						{
+							Name: "IGN Management",
+							Value: strings.Join([]string{
+								"You can register your in game name with the bot, this will be required in order to participate in events.",
+								"`/ign register` - associate your IGN with the discord user ID",
+								"`/ign purge` - remove the association from the database, this will purge all event scores",
+								"`/ign update` - updates the ign associated with your account",
+							}, "\n"),
+						},
+						{
+							Name: "Event Management",
+							Value: strings.Join([]string{
+								"Event related utilities come under the events command, two types of events are currently supported",
+								"`scoreboard-campaign` - where participants claim scores with screenshot proofs and ones with the highest accumulated score wins",
+								"`tournament` - single elimination random matchup pvp tournament",
+								"`/events list` - list active events, optionally pass argument to list all events",
+								"`/events join` - join the event specified with the event ID, or join the only active event",
+								"`/events bail` - leave an event specified with the event ID, or the only active event",
+								"`/events list-participant` - list the participants of the event specified with the event ID, or the only active event",
+								"mod only: `/events create` - creates an event, if start time is unspecified, current time will be used",
+								"mod only: `/events activate` - activate an event by ID",
+								"mod only: `/events deactivate` - deactivate an event by ID",
+							}, "\n"),
+						},
+					},
+				},
+			},
+		},
+	})
+
+	if err != nil {
+		h.Logger.Error("could not send help message", zap.Error(err))
+		h.interactionRespondWithErrorLogging(s, i.Interaction, "Something went wrong."+internalError)
 	}
 }
 
