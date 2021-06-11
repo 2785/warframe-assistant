@@ -32,6 +32,8 @@ const (
 	eventTypeScoreLeaderboard string = "scoreboard-leaderboard"
 )
 
+var supportedEventTypes = []string{eventTypeScoreCampaign, eventTypeScoreLeaderboard, eventTypeTournament}
+
 const internalError string = " Please try again later or contact bot maintainer for help!"
 
 func (h *EventHandler) sendReplyWithLogging(s *discordgo.Session, gid, cid, mid, msg string) {

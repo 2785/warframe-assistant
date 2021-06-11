@@ -99,7 +99,7 @@ func (h *EventHandler) RegisterInteractionCreateHandlers(s *discordgo.Session) e
 						{
 							Type:        discordgo.ApplicationCommandOptionString,
 							Name:        "type",
-							Description: "Type of the new event, for now supports `scoreboard-campaign` and `tournament`",
+							Description: fmt.Sprintf("Type of the new event, supported types: %s", strings.Join(supportedEventTypes, ", ")),
 							Required:    true,
 						},
 						{
@@ -464,8 +464,8 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 			return
 		}
 
-		if !funk.Contains([]string{"scoreboard-campaign", "tournament"}, eType) {
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Sorry, only 'tournament' and 'scoreboard-campaign' are supported at the moment")
+		if !funk.Contains(supportedEventTypes, eType) {
+			h.interactionRespondWithErrorLogging(s, i.Interaction, fmt.Sprintf("Sorry, only the following event types are currently supported: %s", strings.Join(supportedEventTypes, ", ")))
 			return
 		}
 
