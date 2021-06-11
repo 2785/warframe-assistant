@@ -953,7 +953,7 @@ func (h *EventHandler) handleHelp(s *discordgo.Session, i *discordgo.Interaction
 							}, "\n"),
 						},
 						{
-							Name: "Event Management",
+							Name: "Event Management - part 1",
 							Value: strings.Join([]string{
 								"Event related utilities come under the events command, two types of events are currently supported",
 								"`scoreboard-campaign` - where participants claim scores with screenshot proofs and ones with the highest accumulated score wins",
@@ -961,6 +961,11 @@ func (h *EventHandler) handleHelp(s *discordgo.Session, i *discordgo.Interaction
 								"`tournament` - single elimination random matchup pvp tournament",
 								"`?!submit <score> event: <event-id>` - submit a screenshot to claim a score, event ID can be omitted if there's only one active event",
 								"`/events list` - list active events, optionally pass argument to list all events",
+							}, "\n"),
+						},
+						{
+							Name: "Event Management - part 2",
+							Value: strings.Join([]string{
 								"`/events join` - join the event specified with the event ID, or join the only active event",
 								"`/events bail` - leave an event specified with the event ID, or the only active event",
 								"`/events purge-participation` - nukes all record of you ever doing anything with this event",

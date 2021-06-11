@@ -65,6 +65,9 @@ func (h *EventHandler) mustHaveIGNRegistered(uid string, reply MessageReplier) (
 }
 
 func (h *EventHandler) mustHaveRoleWithID(uid, rid, gid string, reply MessageReplier, s *discordgo.Session) bool {
+	if rid == "" {
+		return true
+	}
 	member, err := s.GuildMember(gid, uid)
 	logger := h.Logger.With(WithUserID(uid), WithGuildID(gid), WithRoleID(rid))
 	if err != nil {
