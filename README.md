@@ -49,3 +49,7 @@ This project is in active-ish development, my next steps are:
 ## Contribution
 
 For feature requests / concerns feel free to make an issue, PR is welcome, if you think the documentation could be improved feel free to make an issue to request clarification as well.
+
+## Testing
+
+Running tests requires access to docker - [ory/dockertest](https://github.com/ory/dockertest) is used and it will automatically detect docker access most of the times, if test crashed it might leave hanging docker containers running postgres, you need to purge those manually if that happened. 
