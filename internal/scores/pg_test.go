@@ -60,113 +60,11 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// // can't be fucked to unit test everything carefully for now
-// func TestWorkflow(t *testing.T) {
-// 	// make the table
-// 	db.MustExec(`CREATE TABLE devtest (
-// 		submissionID uuid DEFAULT gen_random_uuid (),
-// 		userID text NOT NULL,
-// 		ign text NOT NULL,
-// 		score int NOT NULL,
-// 		proof text NOT NULL,
-// 		verified boolean DEFAULT FALSE
-// 	);`)
-
-// 	s := &scores.PostgresService{
-// 		DB:     db,
-// 		Table:  "devtest",
-// 		Logger: zap.NewNop(),
-// 	}
-
-// 	// add some records
-// 	id, err := s.AddUnverified("test-1", "test-1", 1, "some-url")
-// 	require.NoError(t, err)
-// 	assert.NotEmpty(t, id)
-// 	_, err = s.AddUnverified("test-1", "test-1", 1, "some-other-url")
-// 	assert.NoError(t, err)
-// 	_, err = s.AddUnverified("test-2", "test-2", 1, "some-other-url")
-// 	assert.NoError(t, err)
-
-// 	// make sure records are as expected for now
-// 	total, verified, pending, err := s.VerificationStatus()
-// 	require.NoError(t, err)
-// 	assert.Equal(t, 3, total)
-// 	assert.Equal(t, 3, pending)
-// 	assert.Equal(t, 0, verified)
-
-// 	// grab one
-// 	id, _, _, _, _, err = s.GetOneUnverified()
-// 	require.NoError(t, err)
-
-// 	// verify one
-// 	err = s.Verify(id)
-// 	require.NoError(t, err)
-
-// 	// make sure records are as expected for now
-// 	total, verified, pending, err = s.VerificationStatus()
-// 	require.NoError(t, err)
-// 	assert.Equal(t, 3, total)
-// 	assert.Equal(t, 2, pending)
-// 	assert.Equal(t, 1, verified)
-
-// 	// verify another
-// 	id, _, _, _, _, err = s.GetOneUnverified()
-// 	require.NoError(t, err)
-// 	err = s.Verify(id)
-// 	require.NoError(t, err)
-
-// 	// and another, this time we update the score to 5
-// 	id, _, _, _, _, err = s.GetOneUnverified()
-// 	require.NoError(t, err)
-// 	err = s.UpdateScore(id, 5)
-// 	require.NoError(t, err)
-
-// 	// should error now with no record err if we try to get again
-// 	_, _, _, _, _, err = s.GetOneUnverified()
-// 	errNoRecord := &scores.ErrNoRecord{}
-// 	assert.ErrorAs(t, err, &errNoRecord)
-
-// 	// take a look at verification status again
-// 	total, verified, pending, err = s.VerificationStatus()
-// 	require.NoError(t, err)
-// 	assert.Equal(t, 3, total)
-// 	assert.Equal(t, 0, pending)
-// 	assert.Equal(t, 3, verified)
-
-// 	// now we look at scoreboard
-// 	scoreboard, err := s.ScoreReport()
-// 	require.NoError(t, err)
-// 	assert.Equal(t, []scores.SummaryRecord{
-// 		{
-// 			IGN:    "test-2",
-// 			UserID: "test-2",
-// 			Sum:    5,
-// 		},
-// 		{
-// 			IGN:    "test-1",
-// 			UserID: "test-1",
-// 			Sum:    2,
-// 		},
-// 	}, scoreboard)
-
-// 	// try deleting one for shits and giggles
-// 	err = s.DeleteRecord(id)
-// 	require.NoError(t, err)
-
-// 	// now we look at scoreboard again to make sure the test-2 user is gone
-// 	scoreboard, err = s.ScoreReport()
-// 	require.NoError(t, err)
-// 	assert.Equal(t, []scores.SummaryRecord{
-// 		{
-// 			IGN:    "test-1",
-// 			UserID: "test-1",
-// 			Sum:    2,
-// 		},
-// 	}, scoreboard)
-// }
-
 func TestNewWorkflow(t *testing.T) {
-	event_id := uuid.NewString()
+	eid1 := uuid.NewString()
+	eid2 := uuid.NewString()
+
+	pid1, pid2, pid3 := uuid.NewString(), uuid.NewString(), uuid.NewString()
 
 	db.MustExec(`
 	CREATE TABLE events (
@@ -175,12 +73,23 @@ func TestNewWorkflow(t *testing.T) {
 		name text NOT NULL,
 		start_date timestamptz DEFAULT current_timestamp,
 		end_date timestamptz NOT NULL,
-		active boolean
+		active boolean,
+		event_type text
 	);
-
+	
 	CREATE TABLE users (
 		id text NOT NULL PRIMARY KEY,
 		ign text NOT NULL
+	);
+	
+	CREATE TABLE participation (
+		id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+		user_id text,
+		event_id uuid,
+		participating boolean NOT NULL,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+		UNIQUE (user_id, event_id)
 	);
 	
 	CREATE TABLE event_scores (
@@ -188,164 +97,225 @@ func TestNewWorkflow(t *testing.T) {
 		score int NOT NULL,
 		proof text NOT NULL,
 		verified boolean DEFAULT FALSE,
-		user_id text,
-		event_id uuid,
-		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-		FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
-	);
-	
-	CREATE TABLE participation (
-		id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-		user_id text,
-		event_id uuid,
-		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-		FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+		participation_id uuid,
+		FOREIGN KEY (participation_id) REFERENCES participation(id) ON DELETE CASCADE
 	);
 
 	INSERT INTO users (
 		id, ign
 	) values (
-		'test-user-1', 'test-user-1'
+		'test-user-1', 'test-ign-1'
 	);
 
 	INSERT INTO users (
 		id, ign
 	) values (
-		'test-user-2', 'test-user-2'
+		'test-user-2', 'test-ign-2'
 	);
 	`)
 
 	db.MustExec(fmt.Sprintf(`
 	INSERT INTO events (
-		id, guild_id, name, start_date, end_date, active
+		id, guild_id, name, start_date, end_date, active, event_type
 	) values (
-		'%s', 'guild-id', 'test-event-1', CURRENT_TIMESTAMP, '2022-01-01 00:00:00', TRUE
-	)
-	`, event_id))
+		'%s', 'guild-1', 'test-event-1', CURRENT_TIMESTAMP, '2022-01-01 00:00:00', TRUE, 'scoreboard-campaign'
+	);
+	`, eid1))
+
+	db.MustExec(fmt.Sprintf(`
+	INSERT INTO events (
+		id, guild_id, name, start_date, end_date, active, event_type
+	) values (
+		'%s', 'guild-1', 'test-event-2', CURRENT_TIMESTAMP, '2022-01-01 00:00:00', TRUE, 'scoreboard-campaign'
+	);
+	`, eid2))
+
+	db.MustExec(fmt.Sprintf(`
+	INSERT INTO participation (
+		id, user_id, event_id, participating
+	) values (
+		'%s', 'test-user-1', '%s', TRUE
+	);
+	
+	INSERT INTO participation (
+		id, user_id, event_id, participating
+	) values (
+		'%s', 'test-user-2', '%s', TRUE
+	);
+
+	INSERT INTO participation (
+		id, user_id, event_id, participating
+	) values (
+		'%s', 'test-user-1', '%s', TRUE
+	);
+	`, pid1, eid1, pid2, eid1, pid3, eid2))
 
 	s := &scores.PostgresService{
-		DB:               db,
-		ScoresTableName:  "event_scores",
-		Logger:           zap.NewNop(),
-		UserIGNTableName: "users",
+		DB:                     db,
+		ScoresTableName:        "event_scores",
+		Logger:                 zap.NewNop(),
+		UserIGNTableName:       "users",
+		ParticipationTableName: "participation",
 	}
 
-	user1SubmissionID, err := s.SubmitScore("test-user-1", event_id, "some-url", 3)
-	require.NoError(t, err)
-	_, err = s.SubmitScore("test-user-2", event_id, "some-url", 2)
-	require.NoError(t, err)
-	_, err = s.SubmitScore("test-user-2", event_id, "some-url", 4)
-	require.NoError(t, err)
+	require := require.New(t)
+	assert := assert.New(t)
 
-	total, verified, pending, err := s.VerificationStatusForEvent(event_id)
-	require.NoError(t, err)
-	assert.Equal(t, 3, total)
-	assert.Equal(t, 3, pending)
-	assert.Equal(t, 0, verified)
+	// make a new score claim
+	sid1, err := s.ClaimScore(pid1, 3, "some-url")
+	require.NoError(err)
+	assert.NotEmpty(sid1)
 
-	// grab one
-	entry, err := s.GetOneUnverifiedSubmission(event_id)
-	require.NoError(t, err)
+	// make sure the verification status is as expected - 1 total, 0 verified
+	total, verified, err := s.VerificationStatus(eid1)
+	assert.NoError(err)
+	assert.Equal(1, total)
+	assert.Equal(0, verified)
 
-	// verify one
-	err = s.VerifySubmission(entry.ID)
-	require.NoError(t, err)
+	// make sure we can get a record without specifying eid
+	record, err := s.GetOneUnverified()
+	assert.NoError(err)
+	assert.Equal("test-user-1", record.UID)
 
-	// make sure records are as expected for now
-	total, verified, pending, err = s.VerificationStatusForEvent(event_id)
-	require.NoError(t, err)
-	assert.Equal(t, 3, total)
-	assert.Equal(t, 2, pending)
-	assert.Equal(t, 1, verified)
+	// make sure we can get a record while specifying eid
+	record, err = s.GetOneUnverifiedForEvent(eid1)
+	assert.NoError(err)
+	assert.Equal("test-ign-1", record.IGN)
 
-	// verify another
-	entry, err = s.GetOneUnverifiedSubmission(event_id)
-	require.NoError(t, err)
-	err = s.VerifySubmission(entry.ID)
-	require.NoError(t, err)
+	// event 2 should not have any record
+	_, err = s.GetOneUnverifiedForEvent(eid2)
+	assert.Error(err)
+	nr := &scores.ErrNoRecord{}
+	assert.ErrorAs(err, &nr)
 
-	// lets pull the score board, now we should have user 1 ahead of user 2
-	leaderboard, err := s.ScoreReportForEvent(event_id)
-	require.NoError(t, err)
-	assert.Equal(t, []scores.ScoreSummary{
+	// verify the submission
+	err = s.Verify(sid1)
+	assert.NoError(err)
+
+	// make sure the verification status is as expected - 1 total, 1 verified
+	total, verified, err = s.VerificationStatus(eid1)
+	assert.NoError(err)
+	assert.Equal(1, total)
+	assert.Equal(1, verified)
+
+	_, err = s.GetOneUnverifiedForEvent(eid1)
+	assert.Error(err)
+	assert.ErrorAs(err, &nr)
+
+	leaderboard, err := s.MakeReportScoreSum(eid1)
+	assert.NoError(err)
+	assert.Equal([]scores.SummaryRecord{
 		{
-			UID:        "test-user-1",
-			IGN:        "test-user-1",
-			TotalScore: 3,
-		}, {
-			UID:        "test-user-2",
-			IGN:        "test-user-2",
-			TotalScore: 2,
+			UID:   "test-user-1",
+			IGN:   "test-ign-1",
+			Score: 3,
 		},
 	}, leaderboard)
 
-	// and another
-	entry, err = s.GetOneUnverifiedSubmission(event_id)
-	require.NoError(t, err)
-	err = s.VerifySubmission(entry.ID)
-	require.NoError(t, err)
+	// make another submission user 2 to take over user 1
+	_, err = s.ClaimScore(pid2, 5, "some-url")
+	require.NoError(err)
 
-	// lets pull the score board again, now we should have user 2 ahead of user 1
-	leaderboard, err = s.ScoreReportForEvent(event_id)
-	require.NoError(t, err)
-	assert.Equal(t, []scores.ScoreSummary{
+	// lets verify it
+	score2, err := s.GetOneUnverifiedForEvent(eid1)
+	require.NoError(err)
+	err = s.Verify(score2.ID)
+	require.NoError(err)
 
+	// and check verification status / leaderboard
+	total, verified, err = s.VerificationStatus(eid1)
+	assert.NoError(err)
+	assert.Equal(2, total)
+	assert.Equal(2, verified)
+
+	leaderboard, err = s.MakeReportScoreSum(eid1)
+	assert.NoError(err)
+	assert.Equal([]scores.SummaryRecord{
 		{
-			UID:        "test-user-2",
-			IGN:        "test-user-2",
-			TotalScore: 6,
+			UID:   "test-user-2",
+			IGN:   "test-ign-2",
+			Score: 5,
 		},
 		{
-			UID:        "test-user-1",
-			IGN:        "test-user-1",
-			TotalScore: 3,
-		},
-	}, leaderboard)
-
-	// should error now with no record err if we try to get again
-	_, err = s.GetOneUnverifiedSubmission(event_id)
-	errNoRecord := &scores.ErrNoRecord{}
-	assert.ErrorAs(t, err, &errNoRecord)
-
-	// lets buff user 1 up :)
-	err = s.UpdateSubmissionScore(user1SubmissionID, 9000)
-	require.NoError(t, err)
-
-	// lets pull the score board, now we should have user 1 ahead of user 2
-	leaderboard, err = s.ScoreReportForEvent(event_id)
-	require.NoError(t, err)
-	assert.Equal(t, []scores.ScoreSummary{
-		{
-			UID:        "test-user-1",
-			IGN:        "test-user-1",
-			TotalScore: 9000,
-		},
-		{
-			UID:        "test-user-2",
-			IGN:        "test-user-2",
-			TotalScore: 6,
+			UID:   "test-user-1",
+			IGN:   "test-ign-1",
+			Score: 3,
 		},
 	}, leaderboard)
 
-	// take a look at verification status again
-	total, verified, pending, err = s.VerificationStatusForEvent(event_id)
-	require.NoError(t, err)
-	assert.Equal(t, 3, total)
-	assert.Equal(t, 0, pending)
-	assert.Equal(t, 3, verified)
+	// make another submission by user 1 with 1 score
+	sid3, err := s.ClaimScore(pid1, 1, "http://google.ca")
+	require.NoError(err)
 
-	// buffed user 1 too much, lets now nerf it to the ground
-	err = s.DeleteSubmission(user1SubmissionID)
-	require.NoError(t, err)
-
-	// and we should see user 1 gone
-	leaderboard, err = s.ScoreReportForEvent(event_id)
-	require.NoError(t, err)
-	assert.Equal(t, []scores.ScoreSummary{
+	// check leaderboard now
+	leaderboard, err = s.MakeReportScoreSum(eid1)
+	assert.NoError(err)
+	assert.Equal([]scores.SummaryRecord{
 		{
-			UID:        "test-user-2",
-			IGN:        "test-user-2",
-			TotalScore: 6,
+			UID:   "test-user-2",
+			IGN:   "test-ign-2",
+			Score: 5,
+		},
+		{
+			UID:   "test-user-1",
+			IGN:   "test-ign-1",
+			Score: 3,
+		},
+	}, leaderboard)
+
+	// lets buff this score up
+	err = s.UpdateScoreAndVerify(sid3, 9000)
+	assert.NoError(err)
+
+	// check the leaderboard now
+	leaderboard, err = s.MakeReportScoreSum(eid1)
+	assert.NoError(err)
+	assert.Equal([]scores.SummaryRecord{
+		{
+			UID:   "test-user-1",
+			IGN:   "test-ign-1",
+			Score: 9003,
+		},
+		{
+			UID:   "test-user-2",
+			IGN:   "test-ign-2",
+			Score: 5,
+		},
+	}, leaderboard)
+
+	// check the leaderboard in top score mode now
+	leaderboard, err = s.MakeReportScoreTop(eid1)
+	assert.NoError(err)
+	assert.Equal([]scores.SummaryRecord{
+		{
+			UID:   "test-user-1",
+			IGN:   "test-ign-1",
+			Score: 9000,
+		},
+		{
+			UID:   "test-user-2",
+			IGN:   "test-ign-2",
+			Score: 5,
+		},
+	}, leaderboard)
+
+	// buffed too much, lets remove it
+	err = s.DeleteScore(sid3)
+	assert.NoError(err)
+
+	// check leaderboard now
+	leaderboard, err = s.MakeReportScoreSum(eid1)
+	assert.NoError(err)
+	assert.Equal([]scores.SummaryRecord{
+		{
+			UID:   "test-user-2",
+			IGN:   "test-ign-2",
+			Score: 5,
+		},
+		{
+			UID:   "test-user-1",
+			IGN:   "test-ign-1",
+			Score: 3,
 		},
 	}, leaderboard)
 }

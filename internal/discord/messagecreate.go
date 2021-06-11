@@ -1,11 +1,11 @@
 package discord
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/2785/warframe-assistant/internal/scores"
 	"github.com/bwmarrin/discordgo"
@@ -36,14 +36,6 @@ func (h *EventHandler) HandleMessageCreate(s *discordgo.Session, m *discordgo.Me
 		h.handlePing(s, m)
 	case "submit":
 		h.handleSubmitScore(s, m, msg)
-	case "verifyone":
-		h.handleGetOne(s, m.GuildID, m.ChannelID, m.ID)
-	case "scores":
-		h.handleScoreBoard(s, m)
-	case "verificationstatus":
-		h.handleCheckVerificationProgress(s, m)
-	case "update":
-		h.handleUpdateScore(s, m, msg)
 	default:
 		h.handleUnknownCmd(s, m, cmd)
 	}
@@ -63,19 +55,18 @@ func (h *EventHandler) handleUnknownCmd(s *discordgo.Session, m *discordgo.Messa
 	}
 }
 
-var submitScoreRe = regexp.MustCompile(`(?i)ign:\s*(?P<ign>\S+)\s*score:\s*(?P<score>\d+)`)
+var submitScoreRe = regexp.MustCompile(`(?i)\s*(?P<score>\d+)(\s*event:\s*(?P<event>\S+))?`)
 
 func (h *EventHandler) handleSubmitScore(s *discordgo.Session, m *discordgo.MessageCreate, text string) {
-	userID := m.Author.Username + "#" + m.Author.Discriminator
-	match := submitScoreRe.FindStringSubmatch(text)
-
+	logger := h.Logger.With(WithGuildID(m.GuildID), WithMessageID(m.ID), WithChannelID(m.ChannelID), WithUserID(m.Author.ID), WithHandler("handle-submit-score"))
+	replier := messageReplier(s, m.GuildID, m.ChannelID, m.ID)
 	fixInputMsg := fmt.Sprintf("Could not understand the input, please make your submission in the format `%ssubmit ign: <your-ign> score: <your score>`, without the angle brackets", h.Prefix)
 
+	// first we'll see if we can get the event ID
+	match := submitScoreRe.FindStringSubmatch(text)
+
 	if match == nil {
-		_, err := s.ChannelMessageSendReply(m.ChannelID, fixInputMsg, m.Reference())
-		if err != nil {
-			h.Logger.Error("could not send message", zap.Error(err))
-		}
+		replyWithErrorLogging(replier, fixInputMsg, logger)
 		return
 	}
 
@@ -86,128 +77,118 @@ func (h *EventHandler) handleSubmitScore(s *discordgo.Session, m *discordgo.Mess
 		}
 	}
 
-	for _, v := range inputMap {
-		if v == "" {
-			_, err := s.ChannelMessageSendReply(m.ChannelID, fixInputMsg, m.Reference())
-			if err != nil {
-				h.Logger.Error("could not send message", zap.Error(err))
-			}
+	eid := strings.ToLower(strings.TrimSpace(inputMap["event"]))
+	if eid == "" {
+		var ok bool
+		eid, ok = h.mustGetOneActiveEventIDForGuild(m.GuildID, replier)
+		if !ok {
 			return
 		}
 	}
 
-	ign := strings.TrimSpace(inputMap["ign"])
+	event, err := h.MetadataService.GetEvent(eid)
+	if err != nil {
+		replyWithErrorLogging(replier, "Error fetching event information."+internalError, logger)
+		return
+	}
+
+	if event.Begin.After(time.Now()) {
+		replyWithErrorLogging(replier, "Event is not open yet", logger)
+		return
+	}
+
+	if event.End.Before(time.Now()) {
+		replyWithErrorLogging(replier, "Event submission is already closed", logger)
+		return
+	}
+
+	// now we make sure the user is in the event
+	pid, ok := h.mustParticipateInEvent(eid, m.Author.ID, replier)
+	if !ok {
+		return
+	}
+
 	scoreStr := strings.TrimSpace(inputMap["score"])
 
-	scoreInt, err := strconv.Atoi(scoreStr)
+	score, err := strconv.Atoi(scoreStr)
 	if err != nil {
-		_, err = s.ChannelMessageSendReply(m.ChannelID, "score needs to be an integer", m.Reference())
-		if err != nil {
-			h.Logger.Error("could not send message", zap.Error(err))
-		}
+		replyWithErrorLogging(replier, "score needs to be an integer", logger)
 		return
 	}
 
 	if len(m.Attachments) != 1 {
-		_, err = s.ChannelMessageSendReply(m.ChannelID, "Please provide a screenshot as evidence for the score", m.Reference())
-		if err != nil {
-			h.Logger.Error("could not send message", zap.Error(err))
-		}
+		replyWithErrorLogging(replier, "Please provide a screenshot as evidence for the score", logger)
 		return
 	}
 
 	proof := m.Attachments[0].URL
 
-	id, err := h.EventScoreService.AddUnverified(userID, ign, scoreInt, proof)
+	sid, err := h.EventScoreService.ClaimScore(pid, score, proof)
+
 	if err != nil {
-		h.Logger.Error("could not upload score", zap.Error(err))
-		_, err = s.ChannelMessageSendReply(m.ChannelID, "Error uploading score, please try again later or contact 2785, err: "+err.Error(), m.Reference())
-		if err != nil {
-			h.Logger.Error("could not send message", zap.Error(err))
-		}
+		logger.Error("could not upload score", zap.Error(err))
+		replyWithErrorLogging(replier, "Error uploading score."+internalError, logger)
 		return
 	}
 
-	_, err = s.ChannelMessageSendReply(m.ChannelID, fmt.Sprintf("Successfully uploaded score for ign `%s` - %v score, submission ID is %s", ign, scoreInt, id), m.Reference())
-	if err != nil {
-		h.Logger.Error("could not send message", zap.Error(err))
-	}
+	replyWithErrorLogging(replier, fmt.Sprintf("Successfully uploaded score (%v) - submission ID is %s", score, sid), logger)
 }
 
-func (h *EventHandler) handleGetOne(s *discordgo.Session, gid, cid, mid string) {
-	id, userid, ign, score, proof, err := h.EventScoreService.GetOneUnverified()
+func (h *EventHandler) handleGetOneUnverifiedChannel(s *discordgo.Session, gid, cid, eid string) {
+	record, err := h.EventScoreService.GetOneUnverifiedForEvent(eid)
+	logger := h.Logger.With(WithGuildID(gid), WithHandler("handle-get-one-unverified"), WithChannelID(cid), WithEventID(eid))
+
 	if err != nil {
-		noRecord := &scores.ErrNoRecord{}
-		if errors.As(err, &noRecord) {
-			if mid != "" {
-				h.sendReplyWithLogging(s, gid, cid, mid, ":tada: There are no pending submissions to be verified")
-			} else {
-				_, err = s.ChannelMessageSend(cid, ":tada: There are no pending submissions to be verified")
-				if err != nil {
-					h.Logger.Error("could not send message", zap.Error(err))
-				}
-			}
+		if scores.AsErrNoRecord(err) {
+			replyWithErrorLogging(channelMessageSender(s, cid), ":tada: There are no pending submissions to be verified", logger)
 			return
 		}
-
-		if mid != "" {
-			h.sendReplyWithLogging(s, gid, cid, mid, "Sorry, something's borked, please try again or contact bot maintainer for help!")
-		} else {
-			_, err = s.ChannelMessageSend(cid, "Sorry, something's borked, please try again or contact bot maintainer for help!")
-			if err != nil {
-				h.Logger.Error("could not send message", zap.Error(err))
-			}
-		}
-
+		replyWithErrorLogging(channelMessageSender(s, cid), "Sorry, something's borked."+internalError, logger)
 		return
 	}
 
 	sent, err := s.ChannelMessageSendEmbed(cid, &discordgo.MessageEmbed{
-		Image:       &discordgo.MessageEmbedImage{URL: proof},
+		Image:       &discordgo.MessageEmbedImage{URL: record.Proof},
 		Description: "Please react to verify",
 		Fields: []*discordgo.MessageEmbedField{
-			{Name: "User", Value: userid},
-			{Name: "Sumbission ID", Value: id},
-			{Name: "IGN", Value: "`" + ign + "`"},
-			{Name: "Scores Claimed", Value: fmt.Sprintf("%v", score)},
+			{Name: "User", Value: record.UID},
+			{Name: "Sumbission ID", Value: record.ID},
+			{Name: "IGN", Value: "`" + record.IGN + "`"},
+			{Name: "Scores Claimed", Value: fmt.Sprintf("%v", record.Score)},
 		},
 	})
 
 	if err != nil {
-		h.Logger.Error("could not send message", zap.Error(err))
+		logger.Error("could not send message", zap.Error(err))
 		return
 	}
 
-	verificationErrMsg := "Caching / Reaction seem to be borked, reaction verification workflow would not function, please try again later or contact bot maintainer for help!"
+	verificationErrMsg := "Caching / Reaction seem to be borked, reaction verification workflow would not function." + internalError
 
-	msgId := referenceToID(&discordgo.MessageReference{GuildID: gid, ChannelID: cid, MessageID: sent.Reference().MessageID})
-	h.Logger.Debug("storing into cache", zap.Any("cache, before", h.Cache))
-	err = setDialogCache(h.Cache, msgId, &dialogInfo{
-		T:   verificationDialog,
-		GID: gid,
-		CID: cid,
-		MID: sent.Reference().MessageID,
-		SID: id,
+	cacheKey := referenceToID(&discordgo.MessageReference{GuildID: gid, ChannelID: cid, MessageID: sent.Reference().MessageID})
+	logger.Debug("storing into cache", zap.Any("cache, before", h.Cache))
+
+	err = setDialogCache(h.Cache, cacheKey, &dialogInfo{
+		T:        verificationDialog,
+		GID:      gid,
+		CID:      cid,
+		MID:      sent.Reference().MessageID,
+		SID:      record.ID,
+		EID:      eid,
+		CacheKey: cacheKey,
 	})
+
 	if err != nil {
-		h.Logger.Error("could not add entry to cache", zap.Error(err))
-		_, err = s.ChannelMessageSendReply(cid, verificationErrMsg, sent.Reference())
-		if err != nil {
-			h.Logger.Error("could not send message", zap.Error(err))
-		}
+		logger.Error("could not add entry to cache", zap.Error(err))
+		replyWithErrorLogging(messageReplier(s, gid, cid, sent.Reference().MessageID), verificationErrMsg, logger)
 		return
 	}
-
-	h.Logger.Debug("stored into cache", zap.Any("cache, after", h.Cache))
 
 	err = s.MessageReactionAdd(sent.Reference().ChannelID, sent.Reference().MessageID, "✔️")
 
 	if err != nil {
 		h.Logger.Error("could not add reaction", zap.Error(err))
-		_, err = s.ChannelMessageSendReply(cid, verificationErrMsg, sent.Reference())
-		if err != nil {
-			h.Logger.Error("could not send message", zap.Error(err))
-		}
+		replyWithErrorLogging(messageReplier(s, gid, cid, sent.Reference().MessageID), verificationErrMsg, logger)
 		return
 	}
 
@@ -215,108 +196,112 @@ func (h *EventHandler) handleGetOne(s *discordgo.Session, gid, cid, mid string) 
 
 	if err != nil {
 		h.Logger.Error("could not add reaction", zap.Error(err))
-		_, err = s.ChannelMessageSendReply(cid, verificationErrMsg, sent.Reference())
-		if err != nil {
-			h.Logger.Error("could not send message", zap.Error(err))
-		}
+		replyWithErrorLogging(messageReplier(s, gid, cid, sent.Reference().MessageID), verificationErrMsg, logger)
 		return
 	}
 }
 
-func (h *EventHandler) handleScoreBoard(s *discordgo.Session, m *discordgo.MessageCreate) {
-	scoreboard, err := h.EventScoreService.ScoreReport()
-	if err != nil {
-		h.Logger.Error("could not fetch scoreboard", zap.Error(err))
-		_, err = s.ChannelMessageSendReply(m.ChannelID, "Error fetching score board, please try again later or contact bot maintainer for help!", m.Reference())
-		if err != nil {
-			h.Logger.Error("could not send message", zap.Error(err))
-		}
-		return
+// func (h *EventHandler) handleScoreBoard(s *discordgo.Session, m *discordgo.MessageCreate) {
+// 	scoreboard, err := h.EventScoreService.ScoreReport()
+// 	if err != nil {
+// 		h.Logger.Error("could not fetch scoreboard", zap.Error(err))
+// 		_, err = s.ChannelMessageSendReply(m.ChannelID, "Error fetching score board, please try again later or contact bot maintainer for help!", m.Reference())
+// 		if err != nil {
+// 			h.Logger.Error("could not send message", zap.Error(err))
+// 		}
+// 		return
+// 	}
+
+// 	if len(scoreboard) == 0 {
+// 		_, err = s.ChannelMessageSendReply(m.ChannelID, "There's no verified submission to the event yet!", m.Reference())
+// 		if err != nil {
+// 			h.Logger.Error("could not send message", zap.Error(err))
+// 		}
+// 		return
+// 	}
+
+// 	fields := make([]string, len(scoreboard))
+
+// 	for i, v := range scoreboard {
+// 		fields[i] = fmt.Sprintf("#%v - %s (`%s`) - %v points", i+1, v.UserID, v.IGN, v.Sum)
+// 	}
+
+// 	_, err = s.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
+// 		Title:       "Event Scores",
+// 		Description: strings.Join(fields, "\n"),
+// 	})
+
+// 	if err != nil {
+// 		if err != nil {
+// 			h.Logger.Error("could not send message", zap.Error(err))
+// 		}
+// 		return
+// 	}
+// }
+
+// func (h *EventHandler) handleCheckVerificationProgress(s *discordgo.Session, m *discordgo.MessageCreate) {
+// 	t, v, p, err := h.EventScoreService.VerificationStatus()
+// 	if err != nil {
+// 		h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, "Could not get verification status, please try again later or contact bot maintainer for help!")
+// 		return
+// 	}
+
+// 	h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, fmt.Sprintf("%v/%v done, %s", v, t, func() string {
+// 		if p != 0 {
+// 			return fmt.Sprintf("%v to go.", p)
+// 		}
+// 		return "all done! :tada:"
+// 	}()))
+// }
+
+// var updateScoreRe = regexp.MustCompile(`(?i)id:\s*(?P<id>\S+)\s*score:\s*(?P<score>\d+)`)
+
+// func (h *EventHandler) handleUpdateScore(s *discordgo.Session, m *discordgo.MessageCreate, text string) {
+// 	match := updateScoreRe.FindStringSubmatch(text)
+
+// 	fixInputMsg := fmt.Sprintf("Could not understand the input, please update score in the format `%supdate id: <id of the submission> score: <new score>`, without the angle brackets", h.Prefix)
+
+// 	if match == nil {
+// 		h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, fixInputMsg)
+// 		return
+// 	}
+
+// 	inputMap := make(map[string]string)
+// 	for i, name := range updateScoreRe.SubexpNames() {
+// 		if i > 0 && i <= len(match) {
+// 			inputMap[name] = match[i]
+// 		}
+// 	}
+
+// 	for _, v := range inputMap {
+// 		if v == "" {
+// 			h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, fixInputMsg)
+// 			return
+// 		}
+// 	}
+
+// 	id := strings.TrimSpace(inputMap["id"])
+// 	score := strings.TrimSpace(inputMap["score"])
+
+// 	scoreInt, err := strconv.Atoi(score)
+// 	if err != nil {
+// 		h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, "Scores has to be a valid integer!")
+// 		return
+// 	}
+
+// 	err = h.EventScoreService.UpdateScore(id, scoreInt)
+// 	if err != nil {
+// 		h.Logger.Error("could not update score", zap.Error(err), zap.String("sid", id))
+// 		h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, "Could not update score, please try again later or contact bot maintainer for help!")
+// 		return
+// 	}
+// 	h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, "Successfully updated score and updated status to verified!")
+
+// }
+
+func channelMessageSender(s *discordgo.Session, cid string) MessageReplier {
+	return func(msg string) error {
+		_, err := s.ChannelMessageSend(cid, msg)
+		return err
 	}
-
-	if len(scoreboard) == 0 {
-		_, err = s.ChannelMessageSendReply(m.ChannelID, "There's no verified submission to the event yet!", m.Reference())
-		if err != nil {
-			h.Logger.Error("could not send message", zap.Error(err))
-		}
-		return
-	}
-
-	fields := make([]string, len(scoreboard))
-
-	for i, v := range scoreboard {
-		fields[i] = fmt.Sprintf("#%v - %s (`%s`) - %v points", i+1, v.UserID, v.IGN, v.Sum)
-	}
-
-	_, err = s.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
-		Title:       "Event Scores",
-		Description: strings.Join(fields, "\n"),
-	})
-
-	if err != nil {
-		if err != nil {
-			h.Logger.Error("could not send message", zap.Error(err))
-		}
-		return
-	}
-}
-
-func (h *EventHandler) handleCheckVerificationProgress(s *discordgo.Session, m *discordgo.MessageCreate) {
-	t, v, p, err := h.EventScoreService.VerificationStatus()
-	if err != nil {
-		h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, "Could not get verification status, please try again later or contact bot maintainer for help!")
-		return
-	}
-
-	h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, fmt.Sprintf("%v/%v done, %s", v, t, func() string {
-		if p != 0 {
-			return fmt.Sprintf("%v to go.", p)
-		}
-		return "all done! :tada:"
-	}()))
-}
-
-var updateScoreRe = regexp.MustCompile(`(?i)id:\s*(?P<id>\S+)\s*score:\s*(?P<score>\d+)`)
-
-func (h *EventHandler) handleUpdateScore(s *discordgo.Session, m *discordgo.MessageCreate, text string) {
-	match := updateScoreRe.FindStringSubmatch(text)
-
-	fixInputMsg := fmt.Sprintf("Could not understand the input, please update score in the format `%supdate id: <id of the submission> score: <new score>`, without the angle brackets", h.Prefix)
-
-	if match == nil {
-		h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, fixInputMsg)
-		return
-	}
-
-	inputMap := make(map[string]string)
-	for i, name := range updateScoreRe.SubexpNames() {
-		if i > 0 && i <= len(match) {
-			inputMap[name] = match[i]
-		}
-	}
-
-	for _, v := range inputMap {
-		if v == "" {
-			h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, fixInputMsg)
-			return
-		}
-	}
-
-	id := strings.TrimSpace(inputMap["id"])
-	score := strings.TrimSpace(inputMap["score"])
-
-	scoreInt, err := strconv.Atoi(score)
-	if err != nil {
-		h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, "Scores has to be a valid integer!")
-		return
-	}
-
-	err = h.EventScoreService.UpdateScore(id, scoreInt)
-	if err != nil {
-		h.Logger.Error("could not update score", zap.Error(err), zap.String("sid", id))
-		h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, "Could not update score, please try again later or contact bot maintainer for help!")
-		return
-	}
-	h.sendReplyWithLogging(s, m.GuildID, m.ChannelID, m.ID, "Successfully updated score and updated status to verified!")
-
 }

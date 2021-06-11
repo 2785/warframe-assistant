@@ -59,9 +59,11 @@ var serveBotCmd = &cobra.Command{
 		}
 
 		pgService := &scores.PostgresService{
-			DB:     db,
-			Table:  "devtest",
-			Logger: logger,
+			DB:                     db,
+			Logger:                 logger,
+			ScoresTableName:        "event_scores",
+			ParticipationTableName: "participation",
+			UserIGNTableName:       "users",
 		}
 
 		memCache := cache.NewMemory(5*time.Minute, 10*time.Minute)

@@ -9,8 +9,8 @@ import (
 )
 
 type dialogInfo struct {
-	T                  dialogType
-	GID, MID, CID, SID string
+	T                                 dialogType
+	GID, MID, CID, SID, EID, CacheKey string
 }
 
 func setDialogCache(c cache.Cache, key string, info *dialogInfo) error {

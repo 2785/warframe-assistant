@@ -1,6 +1,9 @@
 package meta
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 type Service interface {
 	GetRoleRequirementForGuild(action string, gid string) (string, error)
@@ -30,11 +33,14 @@ type EventService interface {
 }
 
 type ParticipationService interface {
-	AddParticipation(userID, eventID string) (string, error)
+	AddParticipation(userID, eventID string, participating bool) (string, error)
 	DeleteParticipation(id string) error
 	DeleteParticipationByUserAndEvent(uid, eid string) error
-	ListUserForEvent(eid string) (map[string]string, error)
+	ListUserForEvent(eid string) (map[string]string, map[string]string, error)
 	UserInEvent(uid, eid string) (bool, error)
+	SetParticipation(id string, status bool) error
+	SetParticipationByUserAndEvent(uid, eid string, status bool) error
+	GetParticipation(uid, eid string) (string, bool, error)
 }
 
 type Event struct {
@@ -53,6 +59,11 @@ type ErrNoRecord struct{}
 
 func (e *ErrNoRecord) Error() string {
 	return "no records found"
+}
+
+func AsErrNoRecord(e error) bool {
+	nr := &ErrNoRecord{}
+	return errors.As(e, &nr)
 }
 
 var _ error = &ErrDuplicateEntry{}

@@ -1,21 +1,23 @@
 package scores
 
-type Repository interface {
-}
+import "errors"
 
 type ScoresService interface {
-	AddUnverified(userID, ign string, score int, proof string) (submissionID string, e error)
-	GetOneUnverified() (submissionID, userID, ign string, score int, proof string, e error)
-	Verify(submissionID string) error
-	ScoreReport() ([]SummaryRecord, error)
-	VerificationStatus() (total, verified, pending int, e error)
-	DeleteRecord(submissionID string) error
-	UpdateScore(submissionID string, newScore int) error
+	ClaimScore(pid string, score int, proof string) (submissionID string, e error)
+	GetOneUnverified() (*ScoreRecord, error)
+	GetOneUnverifiedForEvent(eid string) (*ScoreRecord, error)
+	Verify(sid string) error
+	MakeReportScoreSum(eid string) ([]SummaryRecord, error)
+	MakeReportScoreTop(eid string) ([]SummaryRecord, error)
+	VerificationStatus(eid string) (total, verified int, e error)
+	DeleteScore(sid string) error
+	UpdateScoreAndVerify(sid string, score int) error
 }
 
-type Record struct {
-	ID       string `db:"submissionid"`
-	UserID   string `db:"userid"`
+type ScoreRecord struct {
+	ID       string `db:"eid"`
+	PID      string `db:"pid"`
+	UID      string `db:"uid"`
 	IGN      string `db:"ign"`
 	Score    int    `db:"score"`
 	Proof    string `db:"proof"`
@@ -23,24 +25,9 @@ type Record struct {
 }
 
 type SummaryRecord struct {
-	UserID string `db:"userid"`
-	IGN    string `db:"ign"`
-	Sum    int    `db:"sum"`
-}
-
-type ScoreSummary struct {
-	UID        string `db:"user_id"`
-	IGN        string `db:"ign"`
-	TotalScore int    `db:"score"`
-}
-
-type ScoreSubmission struct {
-	ID       string `db:"id"`
-	UID      string `db:"user_id"`
-	EID      string `db:"event_id"`
-	Proof    string `db:"proof"`
-	Verified bool   `db:"verified"`
-	Score    int    `db:"score"`
+	UID   string `db:"uid"`
+	IGN   string `db:"ign"`
+	Score int    `db:"score"`
 }
 
 var _ error = &ErrNoRecord{}
@@ -49,4 +36,9 @@ type ErrNoRecord struct{}
 
 func (e *ErrNoRecord) Error() string {
 	return "no records found"
+}
+
+func AsErrNoRecord(e error) bool {
+	nr := &ErrNoRecord{}
+	return errors.As(e, &nr)
 }

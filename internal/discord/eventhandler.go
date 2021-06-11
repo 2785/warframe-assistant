@@ -26,6 +26,12 @@ const (
 	manageEventDialog  dialogType = dialogType("manage-event")
 )
 
+const (
+	eventTypeTournament       string = "tournament"
+	eventTypeScoreCampaign    string = "scoreboard-campaign"
+	eventTypeScoreLeaderboard string = "scoreboard-leaderboard"
+)
+
 const internalError string = " Please try again later or contact bot maintainer for help!"
 
 func (h *EventHandler) sendReplyWithLogging(s *discordgo.Session, gid, cid, mid, msg string) {

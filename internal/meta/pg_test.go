@@ -209,6 +209,7 @@ func TestParticipation(t *testing.T) {
 		id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
 		user_id text,
 		event_id uuid,
+		participating boolean NOT NULL,
 		FOREIGN KEY (user_id) REFERENCES users_test_par(id) ON DELETE CASCADE,
 		FOREIGN KEY (event_id) REFERENCES events_test_par(id) ON DELETE CASCADE,
 		UNIQUE (user_id, event_id)
@@ -238,28 +239,28 @@ func TestParticipation(t *testing.T) {
 	require.NoError(err)
 
 	// we make the users participate in the event
-	pid, err := s.AddParticipation("test-user-1", eid1)
+	pid, err := s.AddParticipation("test-user-1", eid1, true)
 	assert.NoError(err)
 	assert.NotEmpty(pid)
 
-	_, err = s.AddParticipation("test-user-2", eid1)
+	_, err = s.AddParticipation("test-user-2", eid1, true)
 	assert.NoError(err)
 
 	// check and see that event 1 has two users with the right ign
-	users, err := s.ListUserForEvent(eid1)
+	usersIn, _, err := s.ListUserForEvent(eid1)
 	assert.NoError(err)
 	assert.EqualValues(map[string]string{
 		"test-user-1": "test-ign-1",
 		"test-user-2": "test-ign-2",
-	}, users)
+	}, usersIn)
 
 	// make sure no duplicates can be added
-	_, err = s.AddParticipation("test-user-2", eid1)
+	_, err = s.AddParticipation("test-user-2", eid1, true)
 	dupErr := &meta.ErrDuplicateEntry{}
 	assert.ErrorAs(err, &dupErr)
 
 	// but adding to another event is fine
-	_, err = s.AddParticipation("test-user-2", eid2)
+	_, err = s.AddParticipation("test-user-2", eid2, true)
 	assert.NoError(err)
 
 	// make sure user 1 is in the event
@@ -280,7 +281,7 @@ func TestParticipation(t *testing.T) {
 	assert.ErrorAs(err, &noRecordErr)
 
 	// we add user 1 back in
-	pid, err = s.AddParticipation("test-user-1", eid1)
+	pid, err = s.AddParticipation("test-user-1", eid1, true)
 	assert.NoError(err)
 	assert.NotEmpty(pid)
 
@@ -294,4 +295,34 @@ func TestParticipation(t *testing.T) {
 	in, err = s.UserInEvent("test-user-1", eid1)
 	assert.NoError(err)
 	assert.False(in)
+
+	_, _, err = s.GetParticipation("test-user-1", eid1)
+	assert.ErrorAs(err, &noRecordErr)
+
+	// we add user 1 back in
+	pid, err = s.AddParticipation("test-user-1", eid1, true)
+	assert.NoError(err)
+	assert.NotEmpty(pid)
+
+	// we update user 1's participation to be false by id
+	err = s.SetParticipation(pid, false)
+	assert.NoError(err)
+	in, err = s.UserInEvent("test-user-1", eid1)
+	assert.NoError(err)
+	assert.False(in)
+	out, err := s.UserBailedEvent("test-user-1", eid1)
+	assert.NoError(err)
+	assert.True(out)
+	partID, stat, err := s.GetParticipation("test-user-1", eid1)
+	assert.NoError(err)
+	assert.False(stat)
+	assert.NotEmpty(partID)
+	// assert.Fail(partID)
+
+	// we update user 1's participation by event id and user id
+	err = s.SetParticipationByUserAndEvent("test-user-1", eid1, true)
+	assert.NoError(err)
+	in, err = s.UserInEvent("test-user-1", eid1)
+	assert.NoError(err)
+	assert.True(in)
 }

@@ -230,8 +230,8 @@ func (ps *PostgresService) DeleteEvent(id string) error {
 
 // Participation Crud
 
-func (ps *PostgresService) AddParticipation(userID, eventID string) (string, error) {
-	q := psql.Insert(ps.ParticipationTable).Columns("user_id", "event_id").Values(userID, eventID).Suffix("RETURNING id")
+func (ps *PostgresService) AddParticipation(userID, eventID string, particpating bool) (string, error) {
+	q := psql.Insert(ps.ParticipationTable).Columns("user_id", "event_id", "participating").Values(userID, eventID, particpating).Suffix("RETURNING id")
 	// this query can result in error 23503 (foreign key) and 23505 (unique key constraint)
 
 	id := ""
@@ -247,6 +247,48 @@ func (ps *PostgresService) AddParticipation(userID, eventID string) (string, err
 	}
 
 	return id, nil
+}
+
+func (ps *PostgresService) SetParticipation(id string, status bool) error {
+	q := psql.Update(ps.ParticipationTable).Set("participating", status).Where(sq.Eq{"id": id})
+
+	res, err := q.RunWith(ps.DB).Exec()
+
+	if err != nil {
+		return err
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if count != 1 {
+		return &ErrNoRecord{}
+	}
+
+	return nil
+}
+
+func (ps *PostgresService) SetParticipationByUserAndEvent(uid, eid string, status bool) error {
+	q := psql.Update(ps.ParticipationTable).Set("participating", status).Where(sq.Eq{"user_id": uid, "event_id": eid})
+
+	res, err := q.RunWith(ps.DB).Exec()
+
+	if err != nil {
+		return err
+	}
+
+	count, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if count != 1 {
+		return &ErrNoRecord{}
+	}
+
+	return nil
 }
 
 func (ps *PostgresService) DeleteParticipation(id string) error {
@@ -289,39 +331,91 @@ func (ps *PostgresService) DeleteParticipationByUserAndEvent(uid, eid string) er
 	return nil
 }
 
-func (ps *PostgresService) ListUserForEvent(eid string) (map[string]string, error) {
-	q := psql.Select("p.user_id", "u.ign").
-		FromSelect(sq.Select("user_id").
+func (ps *PostgresService) ListUserForEvent(eid string) (yes, no map[string]string, e error) {
+	q := psql.Select("p.user_id", "u.ign", "p.participating").
+		FromSelect(sq.Select("user_id", "participating").
 			From(ps.ParticipationTable).
 			Where(sq.Eq{"event_id": eid}), "p").
 		LeftJoin(fmt.Sprintf("%s as u on p.user_id=u.id", ps.IGNTable))
 
 	query, args, err := q.ToSql()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	type participant struct {
-		UID string `db:"user_id"`
-		IGN string `db:"ign"`
+		UID    string `db:"user_id"`
+		IGN    string `db:"ign"`
+		Status bool   `db:"participating"`
 	}
 
 	participants := []participant{}
 
 	err = ps.DB.Select(&participants, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	out := make(map[string]string, len(participants))
+	yes, no = make(map[string]string), make(map[string]string)
 	for _, v := range participants {
-		out[v.UID] = v.IGN
+		if v.Status {
+			yes[v.UID] = v.IGN
+		} else {
+			no[v.UID] = v.IGN
+		}
 	}
-	return out, nil
+	return yes, no, nil
+}
+
+func (ps *PostgresService) GetParticipation(uid, eid string) (string, bool, error) {
+	q := psql.Select("id", "participating").From(ps.ParticipationTable).Where(sq.Eq{"user_id": uid, "event_id": eid})
+
+	query, args, err := q.ToSql()
+	if err != nil {
+		return "", false, err
+	}
+
+	type part struct {
+		ID     string `db:"id"`
+		Status bool   `db:"participating"`
+	}
+
+	out := &part{}
+
+	err = ps.DB.Get(out, query, args...)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", false, &ErrNoRecord{}
+		}
+		return "", false, err
+	}
+
+	return out.ID, out.Status, nil
 }
 
 func (ps *PostgresService) UserInEvent(uid, eid string) (bool, error) {
-	q := psql.Select("1").From(ps.ParticipationTable).Where(sq.Eq{"user_id": uid, "event_id": eid})
+	q := psql.Select("1").From(ps.ParticipationTable).Where(sq.Eq{"user_id": uid, "event_id": eid, "participating": true})
+
+	query, args, err := q.ToSql()
+	if err != nil {
+		return false, err
+	}
+
+	out := 0
+
+	err = ps.DB.Get(&out, query, args...)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (ps *PostgresService) UserBailedEvent(uid, eid string) (bool, error) {
+	q := psql.Select("1").From(ps.ParticipationTable).Where(sq.Eq{"user_id": uid, "event_id": eid, "participating": false})
 
 	query, args, err := q.ToSql()
 	if err != nil {
