@@ -16,6 +16,9 @@ require (
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/fvbock/endless v0.0.0-20170109170031-447134032cb6
+	github.com/go-redis/cache/v8 v8.4.1
+	github.com/go-redis/redis/v8 v8.4.4
+	github.com/google/go-cmp v0.5.5 // indirect
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/mux v1.8.0
 	github.com/gotestyourself/gotestyourself v2.2.0+incompatible // indirect

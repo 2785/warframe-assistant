@@ -273,7 +273,6 @@ func interactionReplier(s *discordgo.Session, i *discordgo.Interaction) MessageR
 
 func (h *EventHandler) handleTest(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	replyWithErrorLogging(interactionReplier(s, i.Interaction), "Hello from warframe assistant", h.Logger.With(zap.String("handler", "test-handler")))
-	return
 }
 
 func (h *EventHandler) handleIGN(s *discordgo.Session, i *discordgo.InteractionCreate) {
@@ -734,7 +733,12 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 				replyWithErrorLogging(interactionReplier(s, i.Interaction), "Error fetching user information."+internalError, logger)
 				return
 			}
-			usersInDisp = append(usersInDisp, fmt.Sprintf("%s#%s (`%s`)", member.User.Username, member.User.Discriminator, v))
+			usersInDisp = append(usersInDisp, fmt.Sprintf("%s (`%s`)", func() string {
+				if member.Nick != "" {
+					return member.Nick
+				}
+				return member.User.Username + "#" + member.User.Discriminator
+			}(), v))
 		}
 
 		for k, v := range usersOut {
@@ -874,7 +878,17 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 			fields := make([]string, len(leaderboard))
 
 			for i, v := range leaderboard {
-				fields[i] = fmt.Sprintf("#%v - %s (`%s`) - %v points", i+1, v.UID, v.IGN, v.Score)
+				user, err := s.GuildMember(event.GID, v.UID)
+				if err != nil {
+					replyWithErrorLogging(plainTextReplier, "Could not fetch user information."+internalError, logger)
+					return
+				}
+				fields[i] = fmt.Sprintf("#%v - %s (`%s`) - %v points", i+1, func() string {
+					if user.Nick != "" {
+						return user.Nick
+					}
+					return user.User.Username + "#" + user.User.Discriminator
+				}(), v.IGN, v.Score)
 			}
 
 			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{

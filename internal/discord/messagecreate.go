@@ -147,11 +147,21 @@ func (h *EventHandler) handleGetOneUnverifiedChannel(s *discordgo.Session, gid, 
 		return
 	}
 
+	member, err := s.GuildMember(gid, record.UID)
+	if err != nil {
+		logger.Error("could not fetch user information", zap.Error(err))
+	}
+
 	sent, err := s.ChannelMessageSendEmbed(cid, &discordgo.MessageEmbed{
 		Image:       &discordgo.MessageEmbedImage{URL: record.Proof},
 		Description: "Please react to verify",
 		Fields: []*discordgo.MessageEmbedField{
-			{Name: "User", Value: record.UID},
+			{Name: "User", Value: func() string {
+				if member.Nick != "" {
+					return member.Nick
+				}
+				return member.User.Username + "#" + member.User.Discriminator
+			}()},
 			{Name: "Sumbission ID", Value: record.ID},
 			{Name: "IGN", Value: "`" + record.IGN + "`"},
 			{Name: "Scores Claimed", Value: fmt.Sprintf("%v", record.Score)},

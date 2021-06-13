@@ -1,4 +1,4 @@
-# warframe-assistant
+# Warframe Assistant
 
 A discord bot to host in game events
 
@@ -22,6 +22,7 @@ A discord bot to host in game events
 Some configurations are taken from environment variables
 - `BOT_TOKEN` - discord bot token, you may get one by creating your own discord bot, see [discord documentation](https://discord.com/developers/docs/intro) for more details`
 - `DATABASE_URL` - database DSN to connect to your postgres database - the tables required can be created with the `./db.sql` script
+- `REDIS_URL` - if supplied, bot will use a redis as cache, if omitted an in memory cache will be used
 - The bot requires the following discord scopes:
   - `bot`
   - `application.commands`
@@ -37,12 +38,10 @@ Some configurations are taken from environment variables
 - The emoji workflow in score verification may be replaced in the future when [this PR](https://github.com/bwmarrin/discordgo/pull/933) on [bwmarrin/discordgo](https://github.com/bwmarrin/discordgo) goes in
 - If more event types were added, the command description in the `/events create` will have a problem due to exceeding word limit
 - Function docs will be added one day (tm)
-- Cache eviction is only done upon successful workflow - if someone initiated a verification dialog and never touched it again, the cache will not be invalidated, this can potentially lead to memory problems
 
 ## Next steps
 
 This project is in active-ish development, my next steps are:
-- Hook up redis proper, and / or add proper cache invalidation into the memory cache
 - Put database initialization into the app
 - Support PVP tournament
 

@@ -53,6 +53,20 @@ var serveBotCmd = &cobra.Command{
 			return err
 		}
 
+		redisDSN := os.Getenv("REDIS_URL")
+
+		var c cache.Cache
+
+		if redisDSN == "" {
+			c = cache.NewMemory(10 * time.Minute)
+		} else {
+			var err error
+			c, err = cache.NewRedis(redisDSN, 10*time.Minute)
+			if err != nil {
+				return err
+			}
+		}
+
 		logger, err := zap.NewDevelopment(zap.Fields(zap.String("pl", "warframe-assistant"), zap.String("co", "serveBot")))
 		if err != nil {
 			return err
@@ -66,8 +80,6 @@ var serveBotCmd = &cobra.Command{
 			UserIGNTableName:       "users",
 		}
 
-		memCache := cache.NewMemory(5*time.Minute, 10*time.Minute)
-
 		metadataService := meta.NewWithCache(
 			&meta.PostgresService{
 				DB:                 db,
@@ -76,11 +88,11 @@ var serveBotCmd = &cobra.Command{
 				EventsTable:        "events",
 				ParticipationTable: "participation",
 				Logger:             logger.With(zap.String("co", "metadata-service-pg"))},
-			cache.Named("meta", memCache),
+			cache.Named("meta", c),
 			logger.With(zap.String("co", "metadata-service-cache")))
 
 		discordEventHandler := &discord.EventHandler{
-			Cache:             cache.Named("dialog", memCache),
+			Cache:             cache.Named("dialog", c),
 			Logger:            logger,
 			Prefix:            "?!",
 			EventScoreService: pgService,

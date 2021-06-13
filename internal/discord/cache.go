@@ -18,12 +18,18 @@ func setDialogCache(c cache.Cache, key string, info *dialogInfo) error {
 }
 
 func getDialogCache(c cache.Cache, key string) (*dialogInfo, bool) {
-	val, ok := c.Get(key)
-	if !ok {
+	info := &dialogInfo{}
+	err := c.Get(key, info)
+
+	if err != nil {
+		if cache.AsErrNoRecord(err) {
+			return nil, false
+		}
+		// potentially need to get downstream to handle it proper
 		return nil, false
 	}
-	info, ok := val.(*dialogInfo)
-	return info, ok
+
+	return info, true
 }
 
 func referenceToID(r *discordgo.MessageReference) string {
