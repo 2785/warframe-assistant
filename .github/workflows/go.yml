@@ -1,0 +1,28 @@
+name: Go
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+    
+    container: 
+      image: 2785/golang-ci:1.16.5-0.2.0
+      env:
+        DOCKER_HOST: tcp://docker:2375
+        DOCKER_DRIVER: overlay2
+        
+    services:
+      docker:
+        image: docker:20.10.7-dind
+        
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Test
+      run: go test -v ./...
