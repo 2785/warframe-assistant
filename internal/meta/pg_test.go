@@ -9,7 +9,7 @@ import (
 
 	"github.com/2785/warframe-assistant/internal/meta"
 	"github.com/jmoiron/sqlx"
-	"github.com/ory/dockertest"
+	"github.com/ory/dockertest/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

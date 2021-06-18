@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis/v8"
-	"github.com/ory/dockertest"
+	"github.com/ory/dockertest/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
