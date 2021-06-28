@@ -24,7 +24,7 @@ require (
 	github.com/spf13/viper v1.8.0
 	github.com/stretchr/testify v1.7.0
 	github.com/thoas/go-funk v0.8.0
-	go.uber.org/zap v1.17.0
+	go.uber.org/zap v1.18.0
 	golang.org/x/sys v0.0.0-20210616094352-59db8d763f22 // indirect
 	golang.org/x/text v0.3.6 // indirect
 )
