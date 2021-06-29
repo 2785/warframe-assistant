@@ -31,7 +31,9 @@ const pgErrUniqueConstraintViolation string = "23505"
 
 // GetRoleRequirementForGuild returns empty string if there's no requirement
 func (ps *PostgresService) GetRoleRequirementForGuild(action string, gid string) (string, error) {
-	q := psql.Select("role_id").From(ps.ActionRoleTable).Where(sq.Eq{"guild_id": gid, "action": action})
+	q := psql.Select("role_id").
+		From(ps.ActionRoleTable).
+		Where(sq.Eq{"guild_id": gid, "action": action})
 	roleID := ""
 	err := q.RunWith(ps.DB).Scan(&roleID)
 
@@ -53,7 +55,9 @@ func (ps *PostgresService) CreateIGN(userID, ign string) error {
 		pqErr := &pq.Error{}
 		if errors.As(err, &pqErr) {
 			if string(pqErr.Code) == pgErrUniqueConstraintViolation {
-				return &ErrDuplicateEntry{fmt.Sprintf("user with id '%s' already has an IGN registered", userID)}
+				return &ErrDuplicateEntry{
+					fmt.Sprintf("user with id '%s' already has an IGN registered", userID),
+				}
 			}
 		}
 		return err
@@ -112,7 +116,12 @@ func (ps *PostgresService) DeleteRelation(userID string) error {
 
 // Event CRUD
 
-func (ps *PostgresService) CreateEvent(name, eventType string, start, end time.Time, gid string, active bool) (string, error) {
+func (ps *PostgresService) CreateEvent(
+	name, eventType string,
+	start, end time.Time,
+	gid string,
+	active bool,
+) (string, error) {
 	q := psql.Insert(ps.EventsTable).
 		Columns("guild_id", "name", "start_date", "end_date", "active", "event_type").
 		Values(gid, name, start, end, active, eventType).Suffix("RETURNING id")
@@ -127,7 +136,12 @@ func (ps *PostgresService) CreateEvent(name, eventType string, start, end time.T
 	return id, nil
 }
 
-func (ps *PostgresService) UpdateEvent(id, name, eventType string, start, end time.Time, gid string, active bool) error {
+func (ps *PostgresService) UpdateEvent(
+	id, name, eventType string,
+	start, end time.Time,
+	gid string,
+	active bool,
+) error {
 	q := psql.Update(ps.EventsTable).SetMap(map[string]interface{}{
 		"guild_id":   gid,
 		"name":       name,
@@ -154,7 +168,9 @@ func (ps *PostgresService) SetEventEndDate(id string, end time.Time) error {
 }
 
 func (ps *PostgresService) GetEvent(id string) (*Event, error) {
-	q := psql.Select("id", "guild_id", "name", "start_date", "end_date", "active", "event_type").From(ps.EventsTable).Where(sq.Eq{"id": id})
+	q := psql.Select("id", "guild_id", "name", "start_date", "end_date", "active", "event_type").
+		From(ps.EventsTable).
+		Where(sq.Eq{"id": id})
 	query, args, err := q.ToSql()
 	if err != nil {
 		return nil, err
@@ -172,7 +188,8 @@ func (ps *PostgresService) GetEvent(id string) (*Event, error) {
 }
 
 func (ps *PostgresService) ListAllEvent() ([]*Event, error) {
-	q := psql.Select("id", "guild_id", "name", "start_date", "end_date", "active", "event_type").From(ps.EventsTable)
+	q := psql.Select("id", "guild_id", "name", "start_date", "end_date", "active", "event_type").
+		From(ps.EventsTable)
 	query, args, err := q.ToSql()
 	if err != nil {
 		return nil, err
@@ -189,7 +206,9 @@ func (ps *PostgresService) ListAllEvent() ([]*Event, error) {
 }
 
 func (ps *PostgresService) ListEventsForGuild(gid string) ([]*Event, error) {
-	q := psql.Select("id", "guild_id", "name", "start_date", "end_date", "active", "event_type").From(ps.EventsTable).Where(sq.Eq{"guild_id": gid})
+	q := psql.Select("id", "guild_id", "name", "start_date", "end_date", "active", "event_type").
+		From(ps.EventsTable).
+		Where(sq.Eq{"guild_id": gid})
 	query, args, err := q.ToSql()
 	if err != nil {
 		return nil, err
@@ -206,7 +225,9 @@ func (ps *PostgresService) ListEventsForGuild(gid string) ([]*Event, error) {
 }
 
 func (ps *PostgresService) ListActiveEventsForGuild(gid string) ([]*Event, error) {
-	q := psql.Select("id", "guild_id", "name", "start_date", "end_date", "active", "event_type").From(ps.EventsTable).Where(sq.Eq{"guild_id": gid, "active": true})
+	q := psql.Select("id", "guild_id", "name", "start_date", "end_date", "active", "event_type").
+		From(ps.EventsTable).
+		Where(sq.Eq{"guild_id": gid, "active": true})
 	query, args, err := q.ToSql()
 	if err != nil {
 		return nil, err
@@ -230,9 +251,16 @@ func (ps *PostgresService) DeleteEvent(id string) error {
 
 // Participation Crud
 
-func (ps *PostgresService) AddParticipation(userID, eventID string, particpating bool) (string, error) {
-	q := psql.Insert(ps.ParticipationTable).Columns("user_id", "event_id", "participating").Values(userID, eventID, particpating).Suffix("RETURNING id")
-	// this query can result in error 23503 (foreign key) and 23505 (unique key constraint)
+func (ps *PostgresService) AddParticipation(
+	userID, eventID string,
+	particpating bool,
+) (string, error) {
+	q := psql.Insert(ps.ParticipationTable).
+		Columns("user_id", "event_id", "participating").
+		Values(userID, eventID, particpating).
+		Suffix("RETURNING id")
+
+		// this query can result in error 23503 (foreign key) and 23505 (unique key constraint)
 
 	id := ""
 	err := q.RunWith(ps.DB).QueryRow().Scan(&id)
@@ -240,7 +268,9 @@ func (ps *PostgresService) AddParticipation(userID, eventID string, particpating
 		pqErr := &pq.Error{}
 		if errors.As(err, &pqErr) {
 			if string(pqErr.Code) == pgErrUniqueConstraintViolation {
-				return "", &ErrDuplicateEntry{fmt.Sprintf("user with id '%s' is already in event '%s'", userID, eventID)}
+				return "", &ErrDuplicateEntry{
+					fmt.Sprintf("user with id '%s' is already in event '%s'", userID, eventID),
+				}
 			}
 		}
 		return "", err
@@ -271,7 +301,9 @@ func (ps *PostgresService) SetParticipation(id string, status bool) error {
 }
 
 func (ps *PostgresService) SetParticipationByUserAndEvent(uid, eid string, status bool) error {
-	q := psql.Update(ps.ParticipationTable).Set("participating", status).Where(sq.Eq{"user_id": uid, "event_id": eid})
+	q := psql.Update(ps.ParticipationTable).
+		Set("participating", status).
+		Where(sq.Eq{"user_id": uid, "event_id": eid})
 
 	res, err := q.RunWith(ps.DB).Exec()
 
@@ -368,7 +400,9 @@ func (ps *PostgresService) ListUserForEvent(eid string) (yes, no map[string]stri
 }
 
 func (ps *PostgresService) GetParticipation(uid, eid string) (string, bool, error) {
-	q := psql.Select("id", "participating").From(ps.ParticipationTable).Where(sq.Eq{"user_id": uid, "event_id": eid})
+	q := psql.Select("id", "participating").
+		From(ps.ParticipationTable).
+		Where(sq.Eq{"user_id": uid, "event_id": eid})
 
 	query, args, err := q.ToSql()
 	if err != nil {
@@ -394,7 +428,9 @@ func (ps *PostgresService) GetParticipation(uid, eid string) (string, bool, erro
 }
 
 func (ps *PostgresService) UserInEvent(uid, eid string) (bool, error) {
-	q := psql.Select("1").From(ps.ParticipationTable).Where(sq.Eq{"user_id": uid, "event_id": eid, "participating": true})
+	q := psql.Select("1").
+		From(ps.ParticipationTable).
+		Where(sq.Eq{"user_id": uid, "event_id": eid, "participating": true})
 
 	query, args, err := q.ToSql()
 	if err != nil {
@@ -415,7 +451,9 @@ func (ps *PostgresService) UserInEvent(uid, eid string) (bool, error) {
 }
 
 func (ps *PostgresService) UserBailedEvent(uid, eid string) (bool, error) {
-	q := psql.Select("1").From(ps.ParticipationTable).Where(sq.Eq{"user_id": uid, "event_id": eid, "participating": false})
+	q := psql.Select("1").
+		From(ps.ParticipationTable).
+		Where(sq.Eq{"user_id": uid, "event_id": eid, "participating": false})
 
 	query, args, err := q.ToSql()
 	if err != nil {

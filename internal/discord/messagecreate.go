@@ -48,7 +48,11 @@ func (h *EventHandler) handlePing(s *discordgo.Session, m *discordgo.MessageCrea
 	}
 }
 
-func (h *EventHandler) handleUnknownCmd(s *discordgo.Session, m *discordgo.MessageCreate, cmd string) {
+func (h *EventHandler) handleUnknownCmd(
+	s *discordgo.Session,
+	m *discordgo.MessageCreate,
+	cmd string,
+) {
 	_, err := s.ChannelMessageSend(m.ChannelID, fmt.Sprintf("Unknown command '%s'", cmd))
 	if err != nil {
 		h.Logger.Error("could not send message", zap.Error(err))
@@ -57,10 +61,23 @@ func (h *EventHandler) handleUnknownCmd(s *discordgo.Session, m *discordgo.Messa
 
 var submitScoreRe = regexp.MustCompile(`(?i)\s*(?P<score>\d+)(\s*event:\s*(?P<event>\S+))?`)
 
-func (h *EventHandler) handleSubmitScore(s *discordgo.Session, m *discordgo.MessageCreate, text string) {
-	logger := h.Logger.With(WithGuildID(m.GuildID), WithMessageID(m.ID), WithChannelID(m.ChannelID), WithUserID(m.Author.ID), WithHandler("handle-submit-score"))
+func (h *EventHandler) handleSubmitScore(
+	s *discordgo.Session,
+	m *discordgo.MessageCreate,
+	text string,
+) {
+	logger := h.Logger.With(
+		WithGuildID(m.GuildID),
+		WithMessageID(m.ID),
+		WithChannelID(m.ChannelID),
+		WithUserID(m.Author.ID),
+		WithHandler("handle-submit-score"),
+	)
 	replier := messageReplier(s, m.GuildID, m.ChannelID, m.ID)
-	fixInputMsg := fmt.Sprintf("Could not understand the input, please make your submission in the format `%ssubmit ign: <your-ign> score: <your score>`, without the angle brackets", h.Prefix)
+	fixInputMsg := fmt.Sprintf(
+		"Could not understand the input, please make your submission in the format `%ssubmit ign: <your-ign> score: <your score>`, without the angle brackets",
+		h.Prefix,
+	)
 
 	// first we'll see if we can get the event ID
 	match := submitScoreRe.FindStringSubmatch(text)
@@ -117,7 +134,11 @@ func (h *EventHandler) handleSubmitScore(s *discordgo.Session, m *discordgo.Mess
 	}
 
 	if len(m.Attachments) != 1 {
-		replyWithErrorLogging(replier, "Please provide a screenshot as evidence for the score", logger)
+		replyWithErrorLogging(
+			replier,
+			"Please provide a screenshot as evidence for the score",
+			logger,
+		)
 		return
 	}
 
@@ -131,19 +152,36 @@ func (h *EventHandler) handleSubmitScore(s *discordgo.Session, m *discordgo.Mess
 		return
 	}
 
-	replyWithErrorLogging(replier, fmt.Sprintf("Successfully uploaded score (%v) - submission ID is %s", score, sid), logger)
+	replyWithErrorLogging(
+		replier,
+		fmt.Sprintf("Successfully uploaded score (%v) - submission ID is %s", score, sid),
+		logger,
+	)
 }
 
 func (h *EventHandler) handleGetOneUnverifiedChannel(s *discordgo.Session, gid, cid, eid string) {
 	record, err := h.EventScoreService.GetOneUnverifiedForEvent(eid)
-	logger := h.Logger.With(WithGuildID(gid), WithHandler("handle-get-one-unverified"), WithChannelID(cid), WithEventID(eid))
+	logger := h.Logger.With(
+		WithGuildID(gid),
+		WithHandler("handle-get-one-unverified"),
+		WithChannelID(cid),
+		WithEventID(eid),
+	)
 
 	if err != nil {
 		if scores.AsErrNoRecord(err) {
-			replyWithErrorLogging(channelMessageSender(s, cid), ":tada: There are no pending submissions to be verified", logger)
+			replyWithErrorLogging(
+				channelMessageSender(s, cid),
+				":tada: There are no pending submissions to be verified",
+				logger,
+			)
 			return
 		}
-		replyWithErrorLogging(channelMessageSender(s, cid), "Sorry, something's borked."+internalError, logger)
+		replyWithErrorLogging(
+			channelMessageSender(s, cid),
+			"Sorry, something's borked."+internalError,
+			logger,
+		)
 		return
 	}
 
@@ -175,7 +213,13 @@ func (h *EventHandler) handleGetOneUnverifiedChannel(s *discordgo.Session, gid, 
 
 	verificationErrMsg := "Caching / Reaction seem to be borked, reaction verification workflow would not function." + internalError
 
-	cacheKey := referenceToID(&discordgo.MessageReference{GuildID: gid, ChannelID: cid, MessageID: sent.Reference().MessageID})
+	cacheKey := referenceToID(
+		&discordgo.MessageReference{
+			GuildID:   gid,
+			ChannelID: cid,
+			MessageID: sent.Reference().MessageID,
+		},
+	)
 	logger.Debug("storing into cache", zap.Any("cache, before", h.Cache))
 
 	err = setDialogCache(h.Cache, cacheKey, &dialogInfo{
@@ -190,7 +234,11 @@ func (h *EventHandler) handleGetOneUnverifiedChannel(s *discordgo.Session, gid, 
 
 	if err != nil {
 		logger.Error("could not add entry to cache", zap.Error(err))
-		replyWithErrorLogging(messageReplier(s, gid, cid, sent.Reference().MessageID), verificationErrMsg, logger)
+		replyWithErrorLogging(
+			messageReplier(s, gid, cid, sent.Reference().MessageID),
+			verificationErrMsg,
+			logger,
+		)
 		return
 	}
 
@@ -198,7 +246,11 @@ func (h *EventHandler) handleGetOneUnverifiedChannel(s *discordgo.Session, gid, 
 
 	if err != nil {
 		h.Logger.Error("could not add reaction", zap.Error(err))
-		replyWithErrorLogging(messageReplier(s, gid, cid, sent.Reference().MessageID), verificationErrMsg, logger)
+		replyWithErrorLogging(
+			messageReplier(s, gid, cid, sent.Reference().MessageID),
+			verificationErrMsg,
+			logger,
+		)
 		return
 	}
 
@@ -206,7 +258,11 @@ func (h *EventHandler) handleGetOneUnverifiedChannel(s *discordgo.Session, gid, 
 
 	if err != nil {
 		h.Logger.Error("could not add reaction", zap.Error(err))
-		replyWithErrorLogging(messageReplier(s, gid, cid, sent.Reference().MessageID), verificationErrMsg, logger)
+		replyWithErrorLogging(
+			messageReplier(s, gid, cid, sent.Reference().MessageID),
+			verificationErrMsg,
+			logger,
+		)
 		return
 	}
 }

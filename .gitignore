@@ -16,3 +16,9 @@
 
 # some local testing vars
 vars.sh
+
+# log file
+*.log
+
+# temp file
+thing.json

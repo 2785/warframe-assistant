@@ -21,7 +21,12 @@ type IGNService interface {
 }
 
 type EventService interface {
-	CreateEvent(name, eventType string, start, end time.Time, gid string, active bool) (string, error)
+	CreateEvent(
+		name, eventType string,
+		start, end time.Time,
+		gid string,
+		active bool,
+	) (string, error)
 	UpdateEvent(id, name, eventType string, start, end time.Time, gid string, active bool) error
 	SetEventStatus(id string, status bool) error
 	SetEventEndDate(id string, end time.Time) error

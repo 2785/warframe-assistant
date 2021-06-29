@@ -67,7 +67,13 @@ var serveBotCmd = &cobra.Command{
 			}
 		}
 
-		logger, err := zap.NewDevelopment(zap.Fields(zap.String("pl", "warframe-assistant"), zap.String("co", "serveBot")))
+		loggerConf := zap.NewDevelopmentConfig()
+
+		loggerConf.OutputPaths = append(loggerConf.OutputPaths, "./serveBot.log")
+
+		logger, err := loggerConf.Build(
+			zap.Fields(zap.String("pl", "warframe-assistant"), zap.String("co", "serveBot")),
+		)
 		if err != nil {
 			return err
 		}

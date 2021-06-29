@@ -7,14 +7,12 @@ go 1.16
 require (
 	github.com/Masterminds/squirrel v1.5.0
 	github.com/Microsoft/go-winio v0.5.0 // indirect
-	github.com/bwmarrin/discordgo v0.23.3-0.20210529215543-f5bb723db8d9
+	github.com/bwmarrin/discordgo v0.23.3-0.20210627161652-421e14965030
 	github.com/containerd/continuity v0.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.1
-	github.com/fvbock/endless v0.0.0-20170109170031-447134032cb6
 	github.com/go-redis/cache/v8 v8.4.1
 	github.com/go-redis/redis/v8 v8.10.0
 	github.com/google/uuid v1.2.0
-	github.com/gorilla/mux v1.8.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/jmoiron/sqlx v1.3.4
 	github.com/lib/pq v1.10.2

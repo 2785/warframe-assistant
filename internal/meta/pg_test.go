@@ -84,7 +84,10 @@ func TestIGNCrud(t *testing.T) {
 	// see if we can list all users
 	allIGNs, err := s.ListAllIGN()
 	assert.NoError(err)
-	assert.EqualValues(map[string]string{"test-user-1": "test-ign-1", "test-user-2": "test-ign-2"}, allIGNs)
+	assert.EqualValues(
+		map[string]string{"test-user-1": "test-ign-1", "test-user-2": "test-ign-2"},
+		allIGNs,
+	)
 
 	// lets update user1's ign
 	err = s.UpdateIGN("test-user-1", "new-ign-1")
@@ -123,16 +126,37 @@ func TestEventCrud(t *testing.T) {
 	s := &meta.PostgresService{DB: db, Logger: zap.NewNop(), EventsTable: "events"}
 
 	// Create an event
-	eid, err := s.CreateEvent("Test Event 1", "scoreboard-campaign", time.Now(), time.Now().Add(10*time.Minute), "guild-id", true)
+	eid, err := s.CreateEvent(
+		"Test Event 1",
+		"scoreboard-campaign",
+		time.Now(),
+		time.Now().Add(10*time.Minute),
+		"guild-id",
+		true,
+	)
 	require.NoError(err)
 	assert.NotEmpty(eid)
 
 	// Create another in the same guild
-	_, err = s.CreateEvent("Test Event 2", "scoreboard-campaign", time.Now(), time.Now().Add(10*time.Minute), "guild-id", true)
+	_, err = s.CreateEvent(
+		"Test Event 2",
+		"scoreboard-campaign",
+		time.Now(),
+		time.Now().Add(10*time.Minute),
+		"guild-id",
+		true,
+	)
 	require.NoError(err)
 
 	// Create another in a different guild
-	_, err = s.CreateEvent("Test Event 3", "scoreboard-campaign", time.Now(), time.Now().Add(10*time.Minute), "different-guild-id", true)
+	_, err = s.CreateEvent(
+		"Test Event 3",
+		"scoreboard-campaign",
+		time.Now(),
+		time.Now().Add(10*time.Minute),
+		"different-guild-id",
+		true,
+	)
 	require.NoError(err)
 
 	// Now these are all active, we should be able to do a couple things
@@ -170,7 +194,15 @@ func TestEventCrud(t *testing.T) {
 	assert.Equal(aBitLater.Unix(), event.End.Unix())
 
 	// lets update the name of the event
-	err = s.UpdateEvent(eid, "New Event Name", event.EventType, event.Begin, event.End, event.GID, event.Active)
+	err = s.UpdateEvent(
+		eid,
+		"New Event Name",
+		event.EventType,
+		event.Begin,
+		event.End,
+		event.GID,
+		event.Active,
+	)
 	assert.NoError(err)
 
 	// check if the name is set right
@@ -228,9 +260,23 @@ func TestParticipation(t *testing.T) {
 	}
 
 	// make events and users
-	eid1, err := s.CreateEvent("Test Event 1", "scoreboard-campaign", time.Now(), time.Now().Add(10*time.Minute), "guild-id", true)
+	eid1, err := s.CreateEvent(
+		"Test Event 1",
+		"scoreboard-campaign",
+		time.Now(),
+		time.Now().Add(10*time.Minute),
+		"guild-id",
+		true,
+	)
 	require.NoError(err)
-	eid2, err := s.CreateEvent("Test Event 2", "scoreboard-campaign", time.Now(), time.Now().Add(10*time.Minute), "guild-id", true)
+	eid2, err := s.CreateEvent(
+		"Test Event 2",
+		"scoreboard-campaign",
+		time.Now(),
+		time.Now().Add(10*time.Minute),
+		"guild-id",
+		true,
+	)
 	require.NoError(err)
 
 	err = s.CreateIGN("test-user-1", "test-ign-1")

@@ -21,7 +21,11 @@ type PostgresService struct {
 
 var psql = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
-func (ps *PostgresService) ClaimScore(pid string, score int, proof string) (submissionID string, e error) {
+func (ps *PostgresService) ClaimScore(
+	pid string,
+	score int,
+	proof string,
+) (submissionID string, e error) {
 	q := psql.Insert(ps.ScoresTableName).
 		Columns("participation_id", "score", "proof").
 		Values(pid, score, proof).
@@ -42,7 +46,8 @@ func (ps *PostgresService) GetOneUnverified() (*ScoreRecord, error) {
 		From(ps.ScoresTableName + " as e").
 		LeftJoin(ps.ParticipationTableName + " as p on p.id = e.participation_id").
 		LeftJoin(ps.UserIGNTableName + " as u on u.id = p.user_id").
-		Where(sq.Eq{"verified": false}).Limit(1)
+		Where(sq.Eq{"verified": false}).
+		Limit(1)
 
 	record := &ScoreRecord{}
 	query, args, err := q.ToSql()
@@ -128,8 +133,11 @@ func (ps *PostgresService) MakeReportScoreTop(eid string) ([]SummaryRecord, erro
 	q := psql.Select("s.score", "u.id as uid", "u.ign").
 		FromSelect(psql.Select("s.uid", "max(s.score) as score").
 			FromSelect(psql.Select("s.participation_id as pid", "s.score as score", "p.user_id as uid").
-				From(ps.ScoresTableName+" as s").LeftJoin(ps.ParticipationTableName+" as p on p.id = s.participation_id").
-				Where(sq.Eq{"p.participating": true, "p.event_id": eid, "s.verified": true}), "s").GroupBy("s.uid"), "s").
+				From(ps.ScoresTableName+" as s").
+				LeftJoin(ps.ParticipationTableName+" as p on p.id = s.participation_id").
+				Where(sq.Eq{"p.participating": true, "p.event_id": eid, "s.verified": true}),
+				"s").
+			GroupBy("s.uid"), "s").
 		LeftJoin(ps.UserIGNTableName + " as u on u.id = s.uid")
 
 	query, args, err := q.ToSql()
@@ -187,8 +195,12 @@ func (ps *PostgresService) DeleteScore(sid string) error {
 }
 
 func (ps *PostgresService) UpdateScoreAndVerify(sid string, score int) error {
-	res, err := psql.Update(ps.ScoresTableName).Set("score", score).Set("verified", true).Where(sq.Eq{"id": sid}).
-		RunWith(ps.DB).Exec()
+	res, err := psql.Update(ps.ScoresTableName).
+		Set("score", score).
+		Set("verified", true).
+		Where(sq.Eq{"id": sid}).
+		RunWith(ps.DB).
+		Exec()
 
 	if err != nil {
 		return err

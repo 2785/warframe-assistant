@@ -7,19 +7,40 @@ import (
 	"time"
 
 	"github.com/2785/warframe-assistant/internal/meta"
+	"github.com/2785/warframe-assistant/internal/scores"
 	"github.com/bwmarrin/discordgo"
 	"github.com/hako/durafmt"
 	"github.com/thoas/go-funk"
 	"go.uber.org/zap"
 )
 
-func (h *EventHandler) HandleInteractionsCreate(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if h, ok := h.InteractionCreateHandlers[i.Data.Name]; ok {
-		h(s, i)
-		return
+func (h *EventHandler) HandleInteractionsCreate(
+	s *discordgo.Session,
+	i *discordgo.InteractionCreate,
+) {
+
+	h.Logger.Debug("interaction content", zap.Any("interaction", i.Interaction))
+	switch i.Interaction.Type {
+	case discordgo.InteractionApplicationCommand:
+		if h, ok := h.InteractionCreateHandlers[i.ApplicationCommandData().Name]; ok {
+			h(s, i)
+			return
+		}
+	case discordgo.InteractionMessageComponent:
+		if data := i.Interaction.MessageComponentData(); data.ComponentType == discordgo.ButtonComponent {
+			h.handleInteractionButtons(s, i.Interaction, data.CustomID)
+			return
+		}
+		fallthrough
+	default:
+		h.Logger.Warn("unknown slash command of type", zap.Int("command", int(i.Type)))
+		replyWithErrorLogging(
+			interactionReplier(s, i.Interaction),
+			"The input command is current not handled",
+			h.Logger,
+		)
 	}
 
-	h.Logger.Warn("unknown slash command", zap.String("command", i.Data.Name))
 }
 
 func (h *EventHandler) RegisterInteractionCreateHandlers(s *discordgo.Session) error {
@@ -97,10 +118,13 @@ func (h *EventHandler) RegisterInteractionCreateHandlers(s *discordgo.Session) e
 							Required:    true,
 						},
 						{
-							Type:        discordgo.ApplicationCommandOptionString,
-							Name:        "type",
-							Description: fmt.Sprintf("Type of the new event, supported types: %s", strings.Join(supportedEventTypes, ", ")),
-							Required:    true,
+							Type: discordgo.ApplicationCommandOptionString,
+							Name: "type",
+							Description: fmt.Sprintf(
+								"Type of the new event, supported types: %s",
+								strings.Join(supportedEventTypes, ", "),
+							),
+							Required: true,
 						},
 						{
 							Type:        discordgo.ApplicationCommandOptionString,
@@ -264,7 +288,7 @@ func interactionReplier(s *discordgo.Session, i *discordgo.Interaction) MessageR
 	return func(msg string) error {
 		return s.InteractionRespond(i, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionApplicationCommandResponseData{
+			Data: &discordgo.InteractionResponseData{
 				Content: msg,
 			},
 		})
@@ -272,23 +296,27 @@ func interactionReplier(s *discordgo.Session, i *discordgo.Interaction) MessageR
 }
 
 func (h *EventHandler) handleTest(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	replyWithErrorLogging(interactionReplier(s, i.Interaction), "Hello from warframe assistant", h.Logger.With(zap.String("handler", "test-handler")))
+	replyWithErrorLogging(
+		interactionReplier(s, i.Interaction),
+		"Hello from warframe assistant",
+		h.Logger.With(zap.String("handler", "test-handler")),
+	)
 }
 
 func (h *EventHandler) handleIGN(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if len(i.Data.Options) < 1 {
+	if len(i.ApplicationCommandData().Options) < 1 {
 		h.interactionRespondWithErrorLogging(s, i.Interaction, "No subcommand found")
 		return
 	}
 
-	switch i.Data.Options[0].Name {
+	switch i.ApplicationCommandData().Options[0].Name {
 	case "register":
-		if len(i.Data.Options[0].Options) < 1 {
+		if len(i.ApplicationCommandData().Options[0].Options) < 1 {
 			h.interactionRespondWithErrorLogging(s, i.Interaction, "No ign input found")
 			return
 		}
 
-		ign, ok := i.Data.Options[0].Options[0].Value.(string)
+		ign, ok := i.ApplicationCommandData().Options[0].Options[0].Value.(string)
 		if !ok {
 			h.interactionRespondWithErrorLogging(s, i.Interaction, "ign must be a string")
 			return
@@ -304,32 +332,54 @@ func (h *EventHandler) handleIGN(s *discordgo.Session, i *discordgo.InteractionC
 			if errors.As(err, &dupErr) {
 				existing, err := h.MetadataService.GetIGN(i.Member.User.ID)
 				if err != nil {
-					h.interactionRespondWithErrorLogging(s, i.Interaction, "Could not add the ign due to a dup error, yet could not retrieve existing ign, something is borked, please try again later or contact bot maintainer for help")
+					h.interactionRespondWithErrorLogging(
+						s,
+						i.Interaction,
+						"Could not add the ign due to a dup error, yet could not retrieve existing ign, something is borked, please try again later or contact bot maintainer for help",
+					)
 					return
 				}
-				h.interactionRespondWithErrorLogging(s, i.Interaction, fmt.Sprintf("Your discord user already has an associated IGN, `%s`. Please use the update command if you would like to change it", existing))
+				h.interactionRespondWithErrorLogging(
+					s,
+					i.Interaction,
+					fmt.Sprintf(
+						"Your discord user already has an associated IGN, `%s`. Please use the update command if you would like to change it",
+						existing,
+					),
+				)
 				return
 			}
 			h.Logger.Error("could not add ign", zap.Error(err))
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Could not add the ign, something is borked."+internalError)
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"Could not add the ign, something is borked."+internalError,
+			)
 			return
 		}
 
-		h.interactionRespondWithErrorLogging(s, i.Interaction, fmt.Sprintf("Successfully associated your discord user with the IGN `%s`", ign))
+		h.interactionRespondWithErrorLogging(
+			s,
+			i.Interaction,
+			fmt.Sprintf("Successfully associated your discord user with the IGN `%s`", ign),
+		)
 		return
 
 	case "update":
-		oldIGN, ok := h.mustHaveIGNRegistered(i.Member.User.ID, interactionReplier(s, i.Interaction))
+		oldIGN, ok := h.mustHaveIGNRegistered(
+			i.Member.User.ID,
+			interactionReplier(s, i.Interaction),
+		)
 		if !ok {
 			return
 		}
 
-		if len(i.Data.Options[0].Options) < 1 {
+		if len(i.ApplicationCommandData().Options[0].Options) < 1 {
 			h.interactionRespondWithErrorLogging(s, i.Interaction, "No ign input found")
 			return
 		}
 
-		ign, ok := i.Data.Options[0].Options[0].Value.(string)
+		ign, ok := i.ApplicationCommandData().Options[0].Options[0].Value.(string)
 		if !ok {
 			h.interactionRespondWithErrorLogging(s, i.Interaction, "ign must be a string")
 			return
@@ -342,11 +392,23 @@ func (h *EventHandler) handleIGN(s *discordgo.Session, i *discordgo.InteractionC
 		err := h.MetadataService.UpdateIGN(i.Member.User.ID, ign)
 		if err != nil {
 			h.Logger.Error("could not update ign", zap.Error(err))
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Could not update the ign, something is borked."+internalError)
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"Could not update the ign, something is borked."+internalError,
+			)
 			return
 		}
 
-		h.interactionRespondWithErrorLogging(s, i.Interaction, fmt.Sprintf("Successfully updated the IGN associated your discord user from `%s` to `%s`", oldIGN, ign))
+		h.interactionRespondWithErrorLogging(
+			s,
+			i.Interaction,
+			fmt.Sprintf(
+				"Successfully updated the IGN associated your discord user from `%s` to `%s`",
+				oldIGN,
+				ign,
+			),
+		)
 		return
 
 	case "purge":
@@ -357,10 +419,18 @@ func (h *EventHandler) handleIGN(s *discordgo.Session, i *discordgo.InteractionC
 		err := h.MetadataService.DeleteRelation(i.Member.User.ID)
 		if err != nil {
 			h.Logger.Error("could not purge user ign", zap.Error(err))
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Could not purge the ign registration, something is borked."+internalError)
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"Could not purge the ign registration, something is borked."+internalError,
+			)
 			return
 		}
-		h.interactionRespondWithErrorLogging(s, i.Interaction, "Successfully purged ign relation with all associated data")
+		h.interactionRespondWithErrorLogging(
+			s,
+			i.Interaction,
+			"Successfully purged ign relation with all associated data",
+		)
 		return
 
 	default:
@@ -371,17 +441,24 @@ func (h *EventHandler) handleIGN(s *discordgo.Session, i *discordgo.InteractionC
 }
 
 func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.InteractionCreate) {
-	if len(i.Data.Options) < 1 {
+	if len(i.ApplicationCommandData().Options) < 1 {
 		h.interactionRespondWithErrorLogging(s, i.Interaction, "No subcommand found")
 		return
 	}
 
-	subCmd := i.Data.Options[0]
+	subCmd := i.ApplicationCommandData().Options[0]
 
-	roleRequirement, err := h.MetadataService.GetRoleRequirementForGuild(string(manageEventDialog), i.GuildID)
+	roleRequirement, err := h.MetadataService.GetRoleRequirementForGuild(
+		string(manageEventDialog),
+		i.GuildID,
+	)
 
 	if err != nil {
-		h.interactionRespondWithErrorLogging(s, i.Interaction, "Something went wrong."+internalError)
+		h.interactionRespondWithErrorLogging(
+			s,
+			i.Interaction,
+			"Something went wrong."+internalError,
+		)
 		return
 	}
 
@@ -404,7 +481,11 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 		if err != nil {
 			h.Logger.Error("could not list all events", zap.Error(err))
-			h.interactionRespondWithErrorLogging(s, i.Interaction, fmt.Sprintf("Could not list events."+internalError))
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				fmt.Sprintf("Could not list events."+internalError),
+			)
 			return
 		}
 
@@ -436,19 +517,29 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionApplicationCommandResponseData{
+			Data: &discordgo.InteractionResponseData{
 				Embeds: embeds,
 			},
 		})
 
 		if err != nil {
 			h.Logger.Error("could not send response to intraction", zap.Error(err))
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Could not list events."+internalError)
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"Could not list events."+internalError,
+			)
 			return
 		}
 
 	case "create":
-		if !h.mustHaveRoleWithID(i.Member.User.ID, roleRequirement, i.GuildID, interactionReplier(s, i.Interaction), s) {
+		if !h.mustHaveRoleWithID(
+			i.Member.User.ID,
+			roleRequirement,
+			i.GuildID,
+			interactionReplier(s, i.Interaction),
+			s,
+		) {
 			return
 		}
 
@@ -459,19 +550,34 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 		endDates, endDateOk := op["end-date"].(string)
 
 		if !(nameOk && typeOk && endDateOk) {
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Name, type, and end date must be provided")
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"Name, type, and end date must be provided",
+			)
 			return
 		}
 
 		if !funk.Contains(supportedEventTypes, eType) {
-			h.interactionRespondWithErrorLogging(s, i.Interaction, fmt.Sprintf("Sorry, only the following event types are currently supported: %s", strings.Join(supportedEventTypes, ", ")))
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				fmt.Sprintf(
+					"Sorry, only the following event types are currently supported: %s",
+					strings.Join(supportedEventTypes, ", "),
+				),
+			)
 			return
 		}
 
 		formatStr := "Jan 2, 2006 at 3:04pm (MST)"
 		endDate, err := time.Parse(formatStr, endDates)
 		if err != nil {
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "end date format must be of "+formatStr)
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"end date format must be of "+formatStr,
+			)
 			return
 		}
 
@@ -485,20 +591,39 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 			var err error
 			startDate, err = time.Parse(formatStr, startDates)
 			if err != nil {
-				h.interactionRespondWithErrorLogging(s, i.Interaction, "start date format must be of "+formatStr)
+				h.interactionRespondWithErrorLogging(
+					s,
+					i.Interaction,
+					"start date format must be of "+formatStr,
+				)
 				return
 			}
 		} else {
 			startDate = time.Now()
 		}
 
-		eid, err := h.MetadataService.CreateEvent(name, eType, startDate, endDate, i.GuildID, active)
+		eid, err := h.MetadataService.CreateEvent(
+			name,
+			eType,
+			startDate,
+			endDate,
+			i.GuildID,
+			active,
+		)
 		if err != nil {
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Could not create event."+internalError)
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"Could not create event."+internalError,
+			)
 			return
 		}
 
-		h.interactionRespondWithErrorLogging(s, i.Interaction, fmt.Sprintf("Successfully created event with ID '%s'", eid))
+		h.interactionRespondWithErrorLogging(
+			s,
+			i.Interaction,
+			fmt.Sprintf("Successfully created event with ID '%s'", eid),
+		)
 		return
 
 	case "join":
@@ -517,7 +642,10 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 		// if id is not specified we check if there's only one active event
 		if eid == "" {
-			eid, ok = h.mustGetOneActiveEventIDForGuild(i.GuildID, interactionReplier(s, i.Interaction))
+			eid, ok = h.mustGetOneActiveEventIDForGuild(
+				i.GuildID,
+				interactionReplier(s, i.Interaction),
+			)
 			if !ok {
 				return
 			}
@@ -528,16 +656,36 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 			if meta.AsErrNoRecord(err) {
 				_, err := h.MetadataService.AddParticipation(i.Member.User.ID, eid, true)
 				if err != nil {
-					logger.Error("could not add participant to event", zap.Error(err), WithEventID(eid))
-					h.interactionRespondWithErrorLogging(s, i.Interaction, "Could not join the event."+internalError)
+					logger.Error(
+						"could not add participant to event",
+						zap.Error(err),
+						WithEventID(eid),
+					)
+					h.interactionRespondWithErrorLogging(
+						s,
+						i.Interaction,
+						"Could not join the event."+internalError,
+					)
 					return
 				}
-				h.interactionRespondWithErrorLogging(s, i.Interaction, "Successfully joined the event")
+				h.interactionRespondWithErrorLogging(
+					s,
+					i.Interaction,
+					"Successfully joined the event",
+				)
 				return
 			}
 
-			logger.Error("could not check if user is already in event", zap.Error(err), WithEventID(eid))
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Could not join the event."+internalError)
+			logger.Error(
+				"could not check if user is already in event",
+				zap.Error(err),
+				WithEventID(eid),
+			)
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"Could not join the event."+internalError,
+			)
 			return
 		}
 
@@ -573,7 +721,10 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 		// if id is not specified we check if there's only one active event
 		if eid == "" {
-			eid, ok = h.mustGetOneActiveEventIDForGuild(i.GuildID, interactionReplier(s, i.Interaction))
+			eid, ok = h.mustGetOneActiveEventIDForGuild(
+				i.GuildID,
+				interactionReplier(s, i.Interaction),
+			)
 			if !ok {
 				return
 			}
@@ -584,22 +735,46 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 			if meta.AsErrNoRecord(err) {
 				_, err := h.MetadataService.AddParticipation(i.Member.User.ID, eid, false)
 				if err != nil {
-					logger.Error("could not add participant status to event", zap.Error(err), WithEventID(eid))
-					h.interactionRespondWithErrorLogging(s, i.Interaction, "Could not bail the event."+internalError)
+					logger.Error(
+						"could not add participant status to event",
+						zap.Error(err),
+						WithEventID(eid),
+					)
+					h.interactionRespondWithErrorLogging(
+						s,
+						i.Interaction,
+						"Could not bail the event."+internalError,
+					)
 					return
 				}
 
-				h.interactionRespondWithErrorLogging(s, i.Interaction, "Successfully bailed the event")
+				h.interactionRespondWithErrorLogging(
+					s,
+					i.Interaction,
+					"Successfully bailed the event",
+				)
 				return
 			}
 
-			logger.Error("could not check if user is already in event", zap.Error(err), WithEventID(eid))
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Could not join the event."+internalError)
+			logger.Error(
+				"could not check if user is already in event",
+				zap.Error(err),
+				WithEventID(eid),
+			)
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"Could not join the event."+internalError,
+			)
 			return
 		}
 
 		if !in {
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "You have already bailed this event")
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"You have already bailed this event",
+			)
 			return
 		} else {
 			err = h.MetadataService.SetParticipation(pid, false)
@@ -626,42 +801,75 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 		// if id is not specified we check if there's only one active event
 		if eid == "" {
-			eid, ok = h.mustGetOneActiveEventIDForGuild(i.GuildID, interactionReplier(s, i.Interaction))
+			eid, ok = h.mustGetOneActiveEventIDForGuild(
+				i.GuildID,
+				interactionReplier(s, i.Interaction),
+			)
 			if !ok {
 				return
 			}
 		}
 
-		logger := h.Logger.With(WithGuildID(i.GuildID), WithUserID(i.Member.User.ID), WithEventID(eid))
+		logger := h.Logger.With(
+			WithGuildID(i.GuildID),
+			WithUserID(i.Member.User.ID),
+			WithEventID(eid),
+		)
 
 		pid, _, err := h.MetadataService.GetParticipation(i.Member.User.ID, eid)
 		if err != nil {
 			if meta.AsErrNoRecord(err) {
-				replyWithErrorLogging(interactionReplier(s, i.Interaction), "You are not registered in the event, there's nothing to purge", logger)
+				replyWithErrorLogging(
+					interactionReplier(s, i.Interaction),
+					"You are not registered in the event, there's nothing to purge",
+					logger,
+				)
 				return
 			}
-			replyWithErrorLogging(interactionReplier(s, i.Interaction), "Could not check if you are in the event."+internalError, logger)
+			replyWithErrorLogging(
+				interactionReplier(s, i.Interaction),
+				"Could not check if you are in the event."+internalError,
+				logger,
+			)
 			return
 		}
 
 		err = h.MetadataService.DeleteParticipation(pid)
 		if err != nil {
-			replyWithErrorLogging(interactionReplier(s, i.Interaction), "Could not delete your participation of the event."+internalError, logger)
+			replyWithErrorLogging(
+				interactionReplier(s, i.Interaction),
+				"Could not delete your participation of the event."+internalError,
+				logger,
+			)
 		}
 
-		replyWithErrorLogging(interactionReplier(s, i.Interaction), "Successfully deleted your participation record in the event", logger)
+		replyWithErrorLogging(
+			interactionReplier(s, i.Interaction),
+			"Successfully deleted your participation record in the event",
+			logger,
+		)
 
 		return
 
 	case "activate":
-		if !h.mustHaveRoleWithID(i.Member.User.ID, roleRequirement, i.GuildID, interactionReplier(s, i.Interaction), s) {
+		if !h.mustHaveRoleWithID(
+			i.Member.User.ID,
+			roleRequirement,
+			i.GuildID,
+			interactionReplier(s, i.Interaction),
+			s,
+		) {
 			return
 		}
 
 		op := bindOptions(subCmd.Options)
 		id, ok := op["event-id"].(string)
 		if !ok || id == "" {
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "You must supply an event ID to activate")
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"You must supply an event ID to activate",
+			)
 		}
 
 		err := h.MetadataService.SetEventStatus(id, true)
@@ -674,14 +882,24 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 		return
 
 	case "deactivate":
-		if !h.mustHaveRoleWithID(i.Member.User.ID, roleRequirement, i.GuildID, interactionReplier(s, i.Interaction), s) {
+		if !h.mustHaveRoleWithID(
+			i.Member.User.ID,
+			roleRequirement,
+			i.GuildID,
+			interactionReplier(s, i.Interaction),
+			s,
+		) {
 			return
 		}
 
 		op := bindOptions(subCmd.Options)
 		id, ok := op["event-id"].(string)
 		if !ok || id == "" {
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "You must supply an event ID to activate")
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"You must supply an event ID to activate",
+			)
 		}
 
 		err := h.MetadataService.SetEventStatus(id, false)
@@ -702,18 +920,29 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 		// if id is not specified we check if there's only one active event
 		if eid == "" {
-			eid, ok = h.mustGetOneActiveEventIDForGuild(i.GuildID, interactionReplier(s, i.Interaction))
+			eid, ok = h.mustGetOneActiveEventIDForGuild(
+				i.GuildID,
+				interactionReplier(s, i.Interaction),
+			)
 			if !ok {
 				return
 			}
 		}
 
-		logger := h.Logger.With(WithGuildID(i.GuildID), WithEventID(eid), WithCommand("list-participant"))
+		logger := h.Logger.With(
+			WithGuildID(i.GuildID),
+			WithEventID(eid),
+			WithCommand("list-participant"),
+		)
 
 		usersIn, usersOut, err := h.MetadataService.ListUserForEvent(eid)
 		if err != nil {
 			logger.Error("could not list users is in event", zap.Error(err))
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Something went wrong."+internalError)
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"Something went wrong."+internalError,
+			)
 			return
 		}
 
@@ -721,16 +950,32 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 		if err != nil {
 			logger.Error("could not get event by ID", zap.Error(err))
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Something went wrong."+internalError)
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"Something went wrong."+internalError,
+			)
 			return
 		}
 
-		usersInDisp, usersOutDisp := make([]string, 0, len(usersIn)), make([]string, 0, len(usersOut))
+		usersInDisp, usersOutDisp := make(
+			[]string,
+			0,
+			len(usersIn),
+		), make(
+			[]string,
+			0,
+			len(usersOut),
+		)
 		for k, v := range usersIn {
 			member, err := s.GuildMember(i.GuildID, k)
 			if err != nil {
 				logger.Error("could not fetch user information", zap.Error(err))
-				replyWithErrorLogging(interactionReplier(s, i.Interaction), "Error fetching user information."+internalError, logger)
+				replyWithErrorLogging(
+					interactionReplier(s, i.Interaction),
+					"Error fetching user information."+internalError,
+					logger,
+				)
 				return
 			}
 			usersInDisp = append(usersInDisp, fmt.Sprintf("%s (`%s`)", func() string {
@@ -745,28 +990,53 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 			member, err := s.GuildMember(i.GuildID, k)
 			if err != nil {
 				logger.Error("could not fetch user information", zap.Error(err))
-				replyWithErrorLogging(interactionReplier(s, i.Interaction), "Error fetching user information."+internalError, logger)
+				replyWithErrorLogging(
+					interactionReplier(s, i.Interaction),
+					"Error fetching user information."+internalError,
+					logger,
+				)
 				return
 			}
-			usersOutDisp = append(usersOutDisp, fmt.Sprintf("%s#%s (`%s`)", member.User.Username, member.User.Discriminator, v))
+			usersOutDisp = append(
+				usersOutDisp,
+				fmt.Sprintf("%s#%s (`%s`)", member.User.Username, member.User.Discriminator, v),
+			)
 		}
 
 		embeds := []*discordgo.MessageEmbedField{}
 		if len(usersInDisp) > 0 {
-			embeds = append(embeds, &discordgo.MessageEmbedField{Name: "Joined", Value: strings.Join(usersInDisp, "\n")})
+			embeds = append(
+				embeds,
+				&discordgo.MessageEmbedField{
+					Name:  "Joined",
+					Value: strings.Join(usersInDisp, "\n"),
+				},
+			)
 		}
 
 		if len(usersOutDisp) > 0 {
-			embeds = append(embeds, &discordgo.MessageEmbedField{Name: "Bailed", Value: strings.Join(usersOutDisp, "\n")})
+			embeds = append(
+				embeds,
+				&discordgo.MessageEmbedField{
+					Name:  "Bailed",
+					Value: strings.Join(usersOutDisp, "\n"),
+				},
+			)
 		}
 
 		if len(embeds) == 0 {
-			embeds = append(embeds, &discordgo.MessageEmbedField{Name: "Nothing", Value: "There's absolutely nothing in this event"})
+			embeds = append(
+				embeds,
+				&discordgo.MessageEmbedField{
+					Name:  "Nothing",
+					Value: "There's absolutely nothing in this event",
+				},
+			)
 		}
 
 		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
-			Data: &discordgo.InteractionApplicationCommandResponseData{
+			Data: &discordgo.InteractionResponseData{
 				Embeds: []*discordgo.MessageEmbed{
 					{
 						Title:  "Event: " + event.Name,
@@ -778,7 +1048,11 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 		if err != nil {
 			logger.Error("could not send embed", zap.Error(err))
-			h.interactionRespondWithErrorLogging(s, i.Interaction, "Something went wrong."+internalError)
+			h.interactionRespondWithErrorLogging(
+				s,
+				i.Interaction,
+				"Something went wrong."+internalError,
+			)
 			return
 		}
 
@@ -791,35 +1065,58 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 		// if id is not specified we check if there's only one active event
 		if eid == "" {
-			eid, ok = h.mustGetOneActiveEventIDForGuild(i.GuildID, interactionReplier(s, i.Interaction))
+			eid, ok = h.mustGetOneActiveEventIDForGuild(
+				i.GuildID,
+				interactionReplier(s, i.Interaction),
+			)
 			if !ok {
 				return
 			}
 		}
 
-		logger := h.Logger.With(WithGuildID(i.GuildID), WithEventID(eid), WithCommand("list-participant"))
+		logger := h.Logger.With(
+			WithGuildID(i.GuildID),
+			WithEventID(eid),
+			WithCommand("list-participant"),
+		)
 		plainTextReplier := interactionReplier(s, i.Interaction)
 
 		event, err := h.MetadataService.GetEvent(eid)
 		if err != nil {
 			logger.Error("error fetching event information", zap.Error(err))
-			replyWithErrorLogging(plainTextReplier, "Could not fetch event information."+internalError, logger)
+			replyWithErrorLogging(
+				plainTextReplier,
+				"Could not fetch event information."+internalError,
+				logger,
+			)
 			return
 		}
 
 		switch event.EventType {
 		case eventTypeTournament:
-			replyWithErrorLogging(plainTextReplier, "Ay mate progress display for tournaments ain't implemented yet", logger)
+			replyWithErrorLogging(
+				plainTextReplier,
+				"Ay mate progress display for tournaments ain't implemented yet",
+				logger,
+			)
 			return
 		case eventTypeScoreCampaign:
 			leaderboard, err := h.EventScoreService.MakeReportScoreSum(eid)
 			if err != nil {
-				replyWithErrorLogging(plainTextReplier, "Could not fetch event information."+internalError, logger)
+				replyWithErrorLogging(
+					plainTextReplier,
+					"Could not fetch event information."+internalError,
+					logger,
+				)
 				return
 			}
 
 			if len(leaderboard) == 0 {
-				replyWithErrorLogging(plainTextReplier, "There's no submissions in this event yet!", logger)
+				replyWithErrorLogging(
+					plainTextReplier,
+					"There's no submissions in this event yet!",
+					logger,
+				)
 				return
 			}
 
@@ -828,7 +1125,11 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 			for i, v := range leaderboard {
 				user, err := s.GuildMember(event.GID, v.UID)
 				if err != nil {
-					replyWithErrorLogging(plainTextReplier, "Could not fetch user information."+internalError, logger)
+					replyWithErrorLogging(
+						plainTextReplier,
+						"Could not fetch user information."+internalError,
+						logger,
+					)
 					return
 				}
 				fields[i] = fmt.Sprintf("#%v - %s (`%s`) - %v points", i+1, func() string {
@@ -841,7 +1142,7 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionApplicationCommandResponseData{
+				Data: &discordgo.InteractionResponseData{
 					Embeds: []*discordgo.MessageEmbed{
 						{
 							Title: event.Name + " (Accumulative)",
@@ -858,7 +1159,11 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 			if err != nil {
 				logger.Error("could not send embeds", zap.Error(err))
-				replyWithErrorLogging(plainTextReplier, "Error fetching event leadboard."+internalError, logger)
+				replyWithErrorLogging(
+					plainTextReplier,
+					"Error fetching event leadboard."+internalError,
+					logger,
+				)
 			}
 
 			return
@@ -866,12 +1171,20 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 		case eventTypeScoreLeaderboard:
 			leaderboard, err := h.EventScoreService.MakeReportScoreTop(eid)
 			if err != nil {
-				replyWithErrorLogging(plainTextReplier, "Could not fetch event information."+internalError, logger)
+				replyWithErrorLogging(
+					plainTextReplier,
+					"Could not fetch event information."+internalError,
+					logger,
+				)
 				return
 			}
 
 			if len(leaderboard) == 0 {
-				replyWithErrorLogging(plainTextReplier, "There's no submissions in this event yet!", logger)
+				replyWithErrorLogging(
+					plainTextReplier,
+					"There's no submissions in this event yet!",
+					logger,
+				)
 				return
 			}
 
@@ -880,7 +1193,11 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 			for i, v := range leaderboard {
 				user, err := s.GuildMember(event.GID, v.UID)
 				if err != nil {
-					replyWithErrorLogging(plainTextReplier, "Could not fetch user information."+internalError, logger)
+					replyWithErrorLogging(
+						plainTextReplier,
+						"Could not fetch user information."+internalError,
+						logger,
+					)
 					return
 				}
 				fields[i] = fmt.Sprintf("#%v - %s (`%s`) - %v points", i+1, func() string {
@@ -893,7 +1210,7 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 			err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 				Type: discordgo.InteractionResponseChannelMessageWithSource,
-				Data: &discordgo.InteractionApplicationCommandResponseData{
+				Data: &discordgo.InteractionResponseData{
 					Embeds: []*discordgo.MessageEmbed{
 						{
 							Title: event.Name + " (Only best score counts)",
@@ -910,7 +1227,11 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 			if err != nil {
 				logger.Error("could not send embeds", zap.Error(err))
-				replyWithErrorLogging(plainTextReplier, "Error fetching event leadboard."+internalError, logger)
+				replyWithErrorLogging(
+					plainTextReplier,
+					"Error fetching event leadboard."+internalError,
+					logger,
+				)
 			}
 			return
 		default:
@@ -918,9 +1239,17 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 			return
 		}
 	case "verify":
-		if !h.mustHaveRoleWithID(i.Member.User.ID, roleRequirement, i.GuildID, interactionReplier(s, i.Interaction), s) {
+		if !h.mustHaveRoleWithID(
+			i.Member.User.ID,
+			roleRequirement,
+			i.GuildID,
+			interactionReplier(s, i.Interaction),
+			s,
+		) {
 			return
 		}
+
+		h.Logger.Debug("interaction in verify", zap.Any("interaction", i))
 
 		op := bindOptions(subCmd.Options)
 		eid, ok := op["event-id"].(string)
@@ -930,16 +1259,163 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 
 		// if id is not specified we check if there's only one active event
 		if eid == "" {
-			eid, ok = h.mustGetOneActiveEventIDForGuild(i.GuildID, interactionReplier(s, i.Interaction))
+			eid, ok = h.mustGetOneActiveEventIDForGuild(
+				i.GuildID,
+				interactionReplier(s, i.Interaction),
+			)
 			if !ok {
 				return
 			}
 		}
 
-		replyWithErrorLogging(interactionReplier(s, i.Interaction), "Gotcha", h.Logger.With(WithCommand("events verify"), WithEventID(eid), WithUserID(i.Member.User.ID)))
+		record, err := h.EventScoreService.GetOneUnverifiedForEvent(eid)
+		logger := h.Logger.With(
+			WithGuildID(i.GuildID),
+			WithHandler("handle-get-one-unverified"),
+			WithChannelID(i.ChannelID),
+			WithEventID(eid),
+		)
 
-		h.handleGetOneUnverifiedChannel(s, i.GuildID, i.ChannelID, eid)
+		if err != nil {
+			if scores.AsErrNoRecord(err) {
+				replyWithErrorLogging(
+					interactionReplier(s, i.Interaction),
+					":tada: There are no pending submissions to be verified",
+					logger,
+				)
+				return
+			}
+			replyWithErrorLogging(
+				interactionReplier(s, i.Interaction),
+				"Sorry, something's borked."+internalError,
+				logger,
+			)
+			return
+		}
+
+		member, err := s.GuildMember(i.GuildID, record.UID)
+		if err != nil {
+			logger.Error("could not fetch user information", zap.Error(err))
+			replyWithErrorLogging(
+				interactionReplier(s, i.Interaction),
+				"Something went wrong."+internalError,
+				logger,
+			)
+			return
+		}
+
+		event, err := h.MetadataService.GetEvent(eid)
+		if err != nil {
+			logger.Error("could not fetch event information", zap.Error(err))
+			replyWithErrorLogging(
+				interactionReplier(s, i.Interaction),
+				"Something went wrong."+internalError,
+				logger,
+			)
+			return
+		}
+
+		dialog := &VerificationDialog{
+			UserDisplay: formatMember(member),
+			SID:         record.ID,
+			IGN:         "`" + record.IGN + "`",
+			Score:       fmt.Sprintf("%v", record.Score),
+			URL:         record.Proof,
+			EID:         eid,
+			EventName:   event.Name,
+		}
+
+		err = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+			Type: discordgo.InteractionResponseChannelMessageWithSource,
+			Data: &discordgo.InteractionResponseData{
+				Embeds: []*discordgo.MessageEmbed{
+					dialog.ToEmbed(),
+				},
+				Components: []discordgo.MessageComponent{
+					discordgo.ActionsRow{
+						Components: []discordgo.MessageComponent{
+							discordgo.Button{
+								Label:    "Verify",
+								Style:    discordgo.SuccessButton,
+								CustomID: scoreVerificationBotton,
+							},
+							discordgo.Button{
+								Label:    "Reject",
+								Style:    discordgo.DangerButton,
+								CustomID: scoreRejectButton,
+							},
+						},
+					},
+				},
+			},
+		})
+
+		if err != nil {
+			logger.Error("could not respond to interaction", zap.Error(err))
+		}
+
+		// replyWithErrorLogging(interactionReplier(s, i.Interaction), "Gotcha", h.Logger.With(WithCommand("events verify"), WithEventID(eid), WithUserID(i.Member.User.ID)))
+
+		// h.handleGetOneUnverifiedChannel(s, i.GuildID, i.ChannelID, eid)
 		return
+	case "update-score":
+		if !h.mustHaveRoleWithID(
+			i.Member.User.ID,
+			roleRequirement,
+			i.GuildID,
+			interactionReplier(s, i.Interaction),
+			s,
+		) {
+			return
+		}
+
+		logger := h.Logger.With(
+			WithGuildID(i.GuildID),
+			WithHandler("handle-update-score"),
+			WithChannelID(i.ChannelID),
+		)
+
+		op := bindOptions(subCmd.Options)
+		sid, ok := op["submission-id"].(string)
+		if !ok {
+			replyWithErrorLogging(
+				interactionReplier(s, i.Interaction),
+				"`submission-id` must be supplied",
+				logger,
+			)
+			return
+		}
+
+		logger = logger.With(WithSubmissionID(sid))
+
+		logger.Debug("op", zap.Any("op", op))
+
+		newScore, ok := op["new-score"].(float64)
+		if !ok {
+			replyWithErrorLogging(
+				interactionReplier(s, i.Interaction),
+				"`new-score` must be supplied",
+				logger,
+			)
+			return
+		}
+
+		err = h.EventScoreService.UpdateScoreAndVerify(sid, int(newScore))
+		if err != nil {
+			replyWithErrorLogging(
+				interactionReplier(s, i.Interaction),
+				"Error updating score."+internalError,
+				logger,
+			)
+			return
+		}
+
+		replyWithErrorLogging(
+			interactionReplier(s, i.Interaction),
+			"Successfully updated and verified score",
+			logger,
+		)
+
 	default:
 		h.interactionRespondWithErrorLogging(s, i.Interaction, "unknown subcommand")
 	}
@@ -948,7 +1424,7 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 func (h *EventHandler) handleHelp(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	err := s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionApplicationCommandResponseData{
+		Data: &discordgo.InteractionResponseData{
 			Embeds: []*discordgo.MessageEmbed{
 				{
 					Title: "Warframe Assistant User Manual",
@@ -999,14 +1475,22 @@ func (h *EventHandler) handleHelp(s *discordgo.Session, i *discordgo.Interaction
 
 	if err != nil {
 		h.Logger.Error("could not send help message", zap.Error(err))
-		h.interactionRespondWithErrorLogging(s, i.Interaction, "Something went wrong."+internalError)
+		h.interactionRespondWithErrorLogging(
+			s,
+			i.Interaction,
+			"Something went wrong."+internalError,
+		)
 	}
 }
 
-func (h *EventHandler) interactionRespondWithErrorLogging(s *discordgo.Session, i *discordgo.Interaction, msg string) {
+func (h *EventHandler) interactionRespondWithErrorLogging(
+	s *discordgo.Session,
+	i *discordgo.Interaction,
+	msg string,
+) {
 	err := s.InteractionRespond(i, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionApplicationCommandResponseData{
+		Data: &discordgo.InteractionResponseData{
 			Content: msg,
 		},
 	})
@@ -1016,7 +1500,9 @@ func (h *EventHandler) interactionRespondWithErrorLogging(s *discordgo.Session, 
 	}
 }
 
-func bindOptions(options []*discordgo.ApplicationCommandInteractionDataOption) map[string]interface{} {
+func bindOptions(
+	options []*discordgo.ApplicationCommandInteractionDataOption,
+) map[string]interface{} {
 	out := make(map[string]interface{}, len(options))
 	for _, v := range options {
 		out[v.Name] = v.Value
