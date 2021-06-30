@@ -36,16 +36,16 @@ var supportedEventTypes = []string{eventTypeScoreCampaign, eventTypeScoreLeaderb
 
 const internalError string = " Please try again later or contact bot maintainer for help!"
 
-func (h *EventHandler) sendReplyWithLogging(s *discordgo.Session, gid, cid, mid, msg string) {
-	_, err := s.ChannelMessageSendReply(
-		cid,
-		msg,
-		&discordgo.MessageReference{MessageID: mid, ChannelID: cid, GuildID: gid},
-	)
-	if err != nil {
-		h.Logger.Error("could not send message", zap.Error(err))
-	}
-}
+// func (h *EventHandler) sendReplyWithLogging(s *discordgo.Session, gid, cid, mid, msg string) {
+// 	_, err := s.ChannelMessageSendReply(
+// 		cid,
+// 		msg,
+// 		&discordgo.MessageReference{MessageID: mid, ChannelID: cid, GuildID: gid},
+// 	)
+// 	if err != nil {
+// 		h.Logger.Error("could not send message", zap.Error(err))
+// 	}
+// }
 
 func formatMember(m *discordgo.Member) string {
 	if m.Nick != "" {

@@ -107,11 +107,9 @@ var serveBotCmd = &cobra.Command{
 
 		dg.Identify.Intents =
 			discordgo.IntentsGuildMessages +
-				discordgo.IntentsGuildMessageReactions +
 				discordgo.IntentsGuildIntegrations
 
 		dg.AddHandler(discordEventHandler.HandleMessageCreate)
-		dg.AddHandler(discordEventHandler.HandleMessageReactionAdd)
 		dg.AddHandler(discordEventHandler.HandleInteractionsCreate)
 		err = dg.Open()
 		if err != nil {

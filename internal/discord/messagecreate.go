@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/2785/warframe-assistant/internal/scores"
 	"github.com/bwmarrin/discordgo"
 	"go.uber.org/zap"
 )
@@ -159,117 +158,13 @@ func (h *EventHandler) handleSubmitScore(
 	)
 }
 
-func (h *EventHandler) handleGetOneUnverifiedChannel(s *discordgo.Session, gid, cid, eid string) {
-	record, err := h.EventScoreService.GetOneUnverifiedForEvent(eid)
-	logger := h.Logger.With(
-		WithGuildID(gid),
-		WithHandler("handle-get-one-unverified"),
-		WithChannelID(cid),
-		WithEventID(eid),
-	)
-
-	if err != nil {
-		if scores.AsErrNoRecord(err) {
-			replyWithErrorLogging(
-				channelMessageSender(s, cid),
-				":tada: There are no pending submissions to be verified",
-				logger,
-			)
-			return
-		}
-		replyWithErrorLogging(
-			channelMessageSender(s, cid),
-			"Sorry, something's borked."+internalError,
-			logger,
-		)
-		return
-	}
-
-	member, err := s.GuildMember(gid, record.UID)
-	if err != nil {
-		logger.Error("could not fetch user information", zap.Error(err))
-	}
-
-	sent, err := s.ChannelMessageSendEmbed(cid, &discordgo.MessageEmbed{
-		Image:       &discordgo.MessageEmbedImage{URL: record.Proof},
-		Description: "Please react to verify",
-		Fields: []*discordgo.MessageEmbedField{
-			{Name: "User", Value: func() string {
-				if member.Nick != "" {
-					return member.Nick
-				}
-				return member.User.Username + "#" + member.User.Discriminator
-			}()},
-			{Name: "Sumbission ID", Value: record.ID},
-			{Name: "IGN", Value: "`" + record.IGN + "`"},
-			{Name: "Scores Claimed", Value: fmt.Sprintf("%v", record.Score)},
-		},
-	})
-
-	if err != nil {
-		logger.Error("could not send message", zap.Error(err))
-		return
-	}
-
-	verificationErrMsg := "Caching / Reaction seem to be borked, reaction verification workflow would not function." + internalError
-
-	cacheKey := referenceToID(
-		&discordgo.MessageReference{
-			GuildID:   gid,
-			ChannelID: cid,
-			MessageID: sent.Reference().MessageID,
-		},
-	)
-	logger.Debug("storing into cache", zap.Any("cache, before", h.Cache))
-
-	err = setDialogCache(h.Cache, cacheKey, &dialogInfo{
-		T:        verificationDialog,
-		GID:      gid,
-		CID:      cid,
-		MID:      sent.Reference().MessageID,
-		SID:      record.ID,
-		EID:      eid,
-		CacheKey: cacheKey,
-	})
-
-	if err != nil {
-		logger.Error("could not add entry to cache", zap.Error(err))
-		replyWithErrorLogging(
-			messageReplier(s, gid, cid, sent.Reference().MessageID),
-			verificationErrMsg,
-			logger,
-		)
-		return
-	}
-
-	err = s.MessageReactionAdd(sent.Reference().ChannelID, sent.Reference().MessageID, "✔️")
-
-	if err != nil {
-		h.Logger.Error("could not add reaction", zap.Error(err))
-		replyWithErrorLogging(
-			messageReplier(s, gid, cid, sent.Reference().MessageID),
-			verificationErrMsg,
-			logger,
-		)
-		return
-	}
-
-	err = s.MessageReactionAdd(sent.Reference().ChannelID, sent.Reference().MessageID, "❌")
-
-	if err != nil {
-		h.Logger.Error("could not add reaction", zap.Error(err))
-		replyWithErrorLogging(
-			messageReplier(s, gid, cid, sent.Reference().MessageID),
-			verificationErrMsg,
-			logger,
-		)
-		return
-	}
-}
-
-func channelMessageSender(s *discordgo.Session, cid string) MessageReplier {
+func messageReplier(s *discordgo.Session, gid, cid, mid string) MessageReplier {
 	return func(msg string) error {
-		_, err := s.ChannelMessageSend(cid, msg)
+		_, err := s.ChannelMessageSendReply(
+			cid,
+			msg,
+			&discordgo.MessageReference{MessageID: mid, ChannelID: cid, GuildID: gid},
+		)
 		return err
 	}
 }
