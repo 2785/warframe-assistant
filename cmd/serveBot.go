@@ -22,8 +22,10 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"errors"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,7 +36,17 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	"github.com/thoas/go-funk"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
+
+var (
+	databaseURL string
+	redisURL    string
+	botToken    string
+	logLevel    string
 )
 
 // serveBotCmd represents the serveBot command
@@ -43,39 +55,52 @@ var serveBotCmd = &cobra.Command{
 	Short: "TBD",
 	Long:  `TBD`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		dg, err := discordgo.New("Bot " + os.Getenv("BOT_TOKEN"))
+		zapConf := zap.NewProductionConfig()
+		l := zapcore.InfoLevel
+
+		err := l.Set(viper.GetString("log-level"))
+		if err != nil {
+			return err
+		}
+		zapConf.Level.SetLevel(l)
+
+		logger, err := zapConf.Build(
+			zap.Fields(zap.String("pl", "warframe-assistant"), zap.String("co", "serveBot")),
+		)
 		if err != nil {
 			return err
 		}
 
+		if !viper.IsSet("bot_token") {
+			return errors.New("Bot token must be supplied")
+		}
+		dg, err := discordgo.New("Bot " + viper.GetString("bot_token"))
+		if err != nil {
+			return err
+		}
+
+		if !viper.IsSet("database_url") {
+			return errors.New("Database URL must be supplied")
+		}
 		db, err := sqlx.Open("postgres", os.Getenv("DATABASE_URL"))
 		if err != nil {
 			return err
 		}
+		logger.Info("connected to postgres")
 
 		redisDSN := os.Getenv("REDIS_URL")
 
 		var c cache.Cache
 
-		if redisDSN == "" {
-			c = cache.NewMemory(10 * time.Minute)
-		} else {
-			var err error
+		if viper.IsSet("redis_url") {
 			c, err = cache.NewRedis(redisDSN, 10*time.Minute)
 			if err != nil {
 				return err
 			}
-		}
-
-		loggerConf := zap.NewDevelopmentConfig()
-
-		loggerConf.OutputPaths = append(loggerConf.OutputPaths, "./serveBot.log")
-
-		logger, err := loggerConf.Build(
-			zap.Fields(zap.String("pl", "warframe-assistant"), zap.String("co", "serveBot")),
-		)
-		if err != nil {
-			return err
+			logger.Info("connected to redis")
+		} else {
+			c = cache.NewMemory(10 * time.Minute)
+			logger.Warn("redis URL not found, using in memory cache")
 		}
 
 		pgService := &scores.PostgresService{
@@ -122,7 +147,10 @@ var serveBotCmd = &cobra.Command{
 			return err
 		}
 
-		logger.Info("established websocket to discord")
+		logger.Info(
+			"established websocket to discord",
+			zap.String("session-id", dg.State.SessionID),
+		)
 
 		sc := make(chan os.Signal, 1)
 		signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
@@ -135,6 +163,44 @@ var serveBotCmd = &cobra.Command{
 }
 
 func init() {
+	serveBotCmd.Flags().
+		StringVar(&databaseURL, "database-url", "", "Database URL to connect to a Postgres instance")
+	err := viper.BindPFlag("database_url", serveBotCmd.Flags().Lookup("database-url"))
+	if err != nil {
+		panic(err)
+	}
+
+	serveBotCmd.Flags().StringVar(&redisURL, "redis-url", "", "URL to connect to redis")
+	err = viper.BindPFlag("redis_url", serveBotCmd.Flags().Lookup("redis-url"))
+	if err != nil {
+		panic(err)
+	}
+
+	serveBotCmd.Flags().StringVar(&botToken, "bot-token", "", "URL to connect to redis")
+	err = viper.BindPFlag("bot_token", serveBotCmd.Flags().Lookup("bot-token"))
+	if err != nil {
+		panic(err)
+	}
+
+	serveBotCmd.Flags().
+		StringVar(&logLevel, "log-level", "info", "Log level, select between:\n"+strings.Join(
+			funk.Map(
+				[]zapcore.Level{
+					zapcore.DebugLevel,
+					zapcore.InfoLevel,
+					zapcore.WarnLevel,
+					zapcore.ErrorLevel,
+					zapcore.DPanicLevel,
+					zapcore.PanicLevel,
+					zapcore.FatalLevel,
+				}, func(l zapcore.Level) string { return l.String() }).([]string),
+			"\n",
+		))
+	err = viper.BindPFlag("log_level", serveBotCmd.Flags().Lookup("log-level"))
+	if err != nil {
+		panic(err)
+	}
+
 	rootCmd.AddCommand(serveBotCmd)
 
 	// Here you will define your flags and configuration settings.
