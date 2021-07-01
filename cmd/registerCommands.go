@@ -34,7 +34,6 @@ import (
 var registerCommandsCmd = &cobra.Command{
 	Use:   "registerCommands",
 	Short: "Register known commands with discord",
-	Long:  "TBD",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dg, err := discordgo.New("Bot " + os.Getenv("BOT_TOKEN"))
 		if err != nil {
@@ -73,14 +72,4 @@ var registerCommandsCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(registerCommandsCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// registerCommandsCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// registerCommandsCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

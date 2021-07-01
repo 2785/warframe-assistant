@@ -11,6 +11,7 @@ A discord bot to host in game events
 - Event management - host events, set start / end dates, allow your users to submit proofs to claim score, and moderators to verify / update / confirm the scores with emoji reactions, allow any user to check current event status
 - Deployable to heroku, alternatively build the docker image and run in your preferred environment
 - Use the `/help` command to learn more about the bot
+- Shell completion - who needs shell completion for a server app anyway? but hey
 
 ## Supported event types
 

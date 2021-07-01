@@ -52,8 +52,7 @@ var (
 // serveBotCmd represents the serveBot command
 var serveBotCmd = &cobra.Command{
 	Use:   "serveBot",
-	Short: "TBD",
-	Long:  `TBD`,
+	Short: "Connect to discord gateway and bring up the bot",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		zapConf := zap.NewProductionConfig()
 		l := zapcore.InfoLevel
