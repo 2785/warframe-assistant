@@ -58,7 +58,7 @@ var serveBotCmd = &cobra.Command{
 		zapConf := zap.NewProductionConfig()
 		l := zapcore.InfoLevel
 
-		err := l.Set(viper.GetString("log-level"))
+		err := l.Set(viper.GetString("log_level"))
 		if err != nil {
 			return err
 		}
@@ -82,18 +82,16 @@ var serveBotCmd = &cobra.Command{
 		if !viper.IsSet("database_url") {
 			return errors.New("Database URL must be supplied")
 		}
-		db, err := sqlx.Open("postgres", os.Getenv("DATABASE_URL"))
+		db, err := sqlx.Open("postgres", viper.GetString("database_url"))
 		if err != nil {
 			return err
 		}
 		logger.Info("connected to postgres")
 
-		redisDSN := os.Getenv("REDIS_URL")
-
 		var c cache.Cache
 
 		if viper.IsSet("redis_url") {
-			c, err = cache.NewRedis(redisDSN, 10*time.Minute)
+			c, err = cache.NewRedis(viper.GetString("redis_url"), 10*time.Minute)
 			if err != nil {
 				return err
 			}
@@ -202,14 +200,4 @@ func init() {
 	}
 
 	rootCmd.AddCommand(serveBotCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// serveBotCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// serveBotCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

@@ -454,6 +454,7 @@ func (h *EventHandler) handleEvents(s *discordgo.Session, i *discordgo.Interacti
 	)
 
 	if err != nil {
+		h.Logger.Error("could not fetch role requirements for elevated permission", zap.Error(err))
 		h.interactionRespondWithErrorLogging(
 			s,
 			i.Interaction,
