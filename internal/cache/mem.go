@@ -33,6 +33,19 @@ func (m *Memory) Get(key string, value interface{}) error {
 	return m.C.Get(ctx, key, value)
 }
 
+func (r *Memory) Once(key string, recv interface{}, do func() (interface{}, error)) error {
+	ctx := context.Background()
+	return r.C.Once(&cache.Item{
+		Ctx:   ctx,
+		Key:   key,
+		Value: recv,
+		TTL:   r.TTL,
+		Do: func(*cache.Item) (interface{}, error) {
+			return do()
+		},
+	})
+}
+
 func (m *Memory) Drop(key string) error {
 	ctx := context.Background()
 	return m.C.Delete(ctx, key)

@@ -5,6 +5,7 @@ import "errors"
 type Cache interface {
 	Set(key string, val interface{}) error
 	Get(key string, val interface{}) error
+	Once(key string, recv interface{}, do func() (interface{}, error)) error
 	Drop(key string) error
 }
 

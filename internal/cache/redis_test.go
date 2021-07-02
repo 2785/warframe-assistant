@@ -100,4 +100,16 @@ func TestRedisCache(t *testing.T) {
 	err = rCache.Get("thing1", wantThing1)
 	assert.Error(err)
 	assert.True(AsErrNoRecord(err))
+
+	wantThing1 = &thing{}
+	err = rCache.Once("thing1", wantThing1, func() (interface{}, error) {
+		return thing1, nil
+	})
+	assert.NoError(err)
+	assert.Equal(thing1, wantThing1)
+
+	wantThing1 = &thing{}
+	err = rCache.Get("thing1", wantThing1)
+	assert.NoError(err)
+	assert.Equal(thing1, wantThing1)
 }

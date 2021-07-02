@@ -54,6 +54,19 @@ func (r *Redis) Get(key string, val interface{}) error {
 	return err
 }
 
+func (r *Redis) Once(key string, recv interface{}, do func() (interface{}, error)) error {
+	ctx := context.Background()
+	return r.C.Once(&cache.Item{
+		Ctx:   ctx,
+		Key:   key,
+		Value: recv,
+		TTL:   r.TTL,
+		Do: func(*cache.Item) (interface{}, error) {
+			return do()
+		},
+	})
+}
+
 func (r *Redis) Drop(key string) error {
 	ctx := context.Background()
 	err := r.C.Delete(ctx, key)
