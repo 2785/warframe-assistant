@@ -9,7 +9,7 @@ require (
 	github.com/bwmarrin/discordgo v0.23.3-0.20210627161652-421e14965030
 	github.com/davecgh/go-spew v1.1.1
 	github.com/go-redis/cache/v8 v8.4.1
-	github.com/go-redis/redis/v8 v8.11.2
+	github.com/go-redis/redis/v8 v8.11.5
 	github.com/google/uuid v1.3.0
 	github.com/hako/durafmt v0.0.0-20210608085754-5c1018a4e16b
 	github.com/jmoiron/sqlx v1.3.4
