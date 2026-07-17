@@ -5,7 +5,7 @@ module github.com/2785/warframe-assistant
 go 1.16
 
 require (
-	github.com/Masterminds/squirrel v1.5.0
+	github.com/Masterminds/squirrel v1.5.4
 	github.com/bwmarrin/discordgo v0.23.3-0.20210627161652-421e14965030
 	github.com/davecgh/go-spew v1.1.1
 	github.com/go-redis/cache/v8 v8.4.1
